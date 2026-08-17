@@ -14,9 +14,17 @@ const DECISIONS_PATH = process.env.CLAUDE_RESEARCH_DECISIONS_PATH || join(ROOT, 
 const CLAUDE_BIN = process.env.CLAUDE_RESEARCH_CLAUDE_BIN || "claude";
 const DEFAULT_MODEL = process.env.CLAUDE_RESEARCH_MODEL || "opus";
 const DEFAULT_EFFORT = process.env.CLAUDE_RESEARCH_EFFORT || "high";
+const PHASES = ["implementation", "review", "execution", "interpretation"];
+const PERSONAS_BY_PHASE = {
+  implementation: ["implementer"],
+  review: ["code-reviewer", "experiment-auditor", "measurement-auditor", "falsifier"],
+  execution: ["implementer"],
+  interpretation: ["results-interpreter"],
+};
+const APPROVAL_PHASES = new Set(["implementation", "execution"]);
 const jobs = new Map();
 
-const SERVER_INSTRUCTIONS = `Local Claude Code executor for trustworthy research. Every persona receives the shared standing research decisions in addition to its role prompt. Call start with an explicit persona and self-contained brief, then poll with the returned job_id and cursor until terminal. Use reply for corrections in the same Claude session; use a fresh start for independent review. Opus runs locally with dangerous permissions. Before trusting an experiment, independently use code-reviewer, experiment-auditor, and measurement-auditor; use falsifier for competing explanations and results-interpreter after runs. Codex must synthesize evidence and inspect actual artifacts.`;
+const SERVER_INSTRUCTIONS = `Local Claude Code executor for trustworthy research. Discussion and experiment-contract agreement happen in Codex before any Claude job starts. Every job has an immutable workflow phase. Implementation and execution require an exact user approval quote, and they are separate approvals. Every persona receives the shared standing research decisions in addition to its role prompt. Poll each started job until terminal. Use reply for corrections within implementation, review, or interpretation; an execution retry requires a new start and approval. Use fresh jobs for independent review. Never cancel a running job without an exact user approval quote. Opus runs locally with dangerous permissions. Codex must synthesize evidence and inspect actual artifacts.`;
 
 function text(value) {
   if (value === undefined || value === null) return "";
@@ -136,17 +144,30 @@ function consumeClaudeMessage(job, message) {
   }
 }
 
-function buildPrompt(persona, brief, continuation = false) {
+function phaseInstructions(job) {
+  if (job.phase === "implementation") {
+    return `WORKFLOW PHASE: implementation\nUSER APPROVAL: ${job.approvalQuote}\nAUTHORIZED: implement the agreed contract and run focused tests or cheap smoke checks.\nFORBIDDEN: launch the full, expensive, or conclusion-bearing experiment. If such a run is needed, stop and report it to Codex.`;
+  }
+  if (job.phase === "review") {
+    return "WORKFLOW PHASE: review\nAUTHORIZED: inspect the implementation and artifacts and run focused checks.\nFORBIDDEN: edit tracked implementation files or launch the full experiment.";
+  }
+  if (job.phase === "execution") {
+    return `WORKFLOW PHASE: execution\nUSER APPROVAL: ${job.approvalQuote}\nAUTHORIZED: execute only the frozen, audited experiment contract and monitor it as specified.\nFORBIDDEN: change tracked experiment code or silently alter the contract. If a change is required, stop and report it to Codex.`;
+  }
+  return "WORKFLOW PHASE: interpretation\nAUTHORIZED: inspect and analyze completed-run evidence and perform non-destructive recomputation.\nFORBIDDEN: edit tracked implementation files or launch a new experiment.";
+}
+
+function buildPrompt(job, brief, continuation = false) {
   const framing = continuation
     ? "Codex is continuing your existing assignment. Treat the message below as review feedback or an additional request. Preserve the agreed experiment contract and explicitly report any requested change you cannot safely make."
     : "Codex has delegated this assignment after discussing the research direction with the user. Work autonomously in the local checkout. Do not silently resolve scientifically meaningful ambiguity: state assumptions and deviations. Inspect actual files and evidence, and finish with findings, commands run, failures, unresolved risks, and artifact paths.";
-  return `${framing}\n\n${continuation ? "FOLLOW-UP" : "TASK BRIEF"}:\n${brief}`;
+  return `${framing}\n\n${phaseInstructions(job)}\n\n${continuation ? "FOLLOW-UP" : "TASK BRIEF"}:\n${brief}`;
 }
 
 function claudeArgs(job, prompt, continuation) {
   const args = [
     "-p",
-    buildPrompt(job.persona, prompt, continuation),
+    buildPrompt(job, prompt, continuation),
     "--output-format",
     "stream-json",
     "--verbose",
@@ -170,6 +191,7 @@ function launch(job, prompt, continuation = false) {
   addEvent(job, continuation ? "reply_started" : "job_started", {
     turn: job.turn,
     persona: job.persona,
+    phase: job.phase,
     model: job.model,
   });
 
@@ -228,6 +250,8 @@ function publicJob(job) {
     session_id: job.sessionId,
     status: job.status,
     persona: job.persona,
+    phase: job.phase,
+    approval_quote: job.approvalQuote,
     model: job.model,
     effort: job.effort,
     cwd: job.cwd,
@@ -242,11 +266,22 @@ function publicJob(job) {
 function startJob(args) {
   const cwd = resolve(args.cwd || process.cwd());
   if (!statSync(cwd).isDirectory()) throw new Error(`cwd is not a directory: ${cwd}`);
+  const phase = args.phase;
+  if (!PHASES.includes(phase)) {
+    throw new Error(`phase must be one of: ${PHASES.join(", ")}`);
+  }
   const persona = args.persona || "implementer";
   if (!personas[persona]) {
     throw new Error(`Unknown persona '${persona}'. Available: ${Object.keys(personas).join(", ")}`);
   }
+  if (!PERSONAS_BY_PHASE[phase].includes(persona)) {
+    throw new Error(`Persona '${persona}' is not allowed in phase '${phase}'. Allowed: ${PERSONAS_BY_PHASE[phase].join(", ")}`);
+  }
   if (!args.brief?.trim()) throw new Error("brief must be a non-empty string");
+  const approvalQuote = args.approval_quote?.trim() || null;
+  if (APPROVAL_PHASES.has(phase) && !approvalQuote) {
+    throw new Error(`approval_quote is required for phase '${phase}' and must copy the user's explicit authorization`);
+  }
 
   const now = new Date().toISOString();
   const id = randomUUID();
@@ -255,6 +290,8 @@ function startJob(args) {
     sessionId: id,
     cwd,
     persona,
+    phase,
+    approvalQuote,
     model: args.model || DEFAULT_MODEL,
     effort: args.effort || DEFAULT_EFFORT,
     status: "starting",
@@ -312,6 +349,9 @@ function replyToJob(args) {
   if (job.process || job.status === "running" || job.status === "cancelling") {
     throw new Error(`Job ${job.id} is still running; poll or cancel it before replying`);
   }
+  if (job.phase === "execution") {
+    throw new Error("Execution jobs cannot be continued with reply; start a new execution job with a new approval_quote");
+  }
   if (!args.message?.trim()) throw new Error("message must be a non-empty string");
   launch(job, args.message, true);
   return { ...publicJob(job), next_cursor: job.nextSeq };
@@ -319,9 +359,13 @@ function replyToJob(args) {
 
 function cancelJob(args) {
   const job = requireJob(args.job_id);
+  const approvalQuote = args.approval_quote?.trim();
+  if (!approvalQuote) {
+    throw new Error("approval_quote is required to cancel a Claude job and must copy the user's explicit authorization");
+  }
   if (!job.process) return publicJob(job);
   job.status = "cancelling";
-  addEvent(job, "cancel_requested");
+  addEvent(job, "cancel_requested", { approval_quote: approvalQuote });
   job.process.kill("SIGTERM");
   const child = job.process;
   const timer = setTimeout(() => {
@@ -334,17 +378,26 @@ function cancelJob(args) {
 const TOOL_DEFS = [
   {
     name: "start",
-    description: "Start a local Claude Code job and return immediately. Use implementer for code changes; use fresh independent jobs for code-reviewer, experiment-auditor, measurement-auditor, falsifier, and results-interpreter. Default model is Opus. The brief must include the research contract, relevant paths, constraints, acceptance criteria, and requested evidence.",
+    description: "Start a phase-scoped local Claude Code job and return immediately. Do not call during discussion. Implementation and execution are separate phases and each requires an exact user approval quote. Use fresh review jobs for independence. Default model is Opus. The brief must include the research contract, relevant paths, constraints, acceptance criteria, and requested evidence.",
     inputSchema: {
       type: "object",
       properties: {
         brief: { type: "string", description: "Self-contained task brief. Do not pass a vague one-line request." },
         cwd: { type: "string", description: "Local repository working directory. Defaults to the MCP process cwd." },
         persona: { type: "string", enum: Object.keys(personas), default: "implementer" },
+        phase: {
+          type: "string",
+          enum: PHASES,
+          description: "Immutable job scope. Implementation permits code plus cheap checks; execution permits only the separately approved full run.",
+        },
+        approval_quote: {
+          type: "string",
+          description: "Exact user authorization from the current conversation. Required for implementation and execution; never infer or fabricate it.",
+        },
         model: { type: "string", default: DEFAULT_MODEL, description: "Claude model alias or full model name." },
         effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], default: DEFAULT_EFFORT },
       },
-      required: ["brief"],
+      required: ["brief", "phase"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
@@ -367,7 +420,7 @@ const TOOL_DEFS = [
   },
   {
     name: "reply",
-    description: "Continue a completed or failed Claude job in the same persisted Claude session. Use for implementation corrections or follow-up questions. Start a fresh job instead when independence matters.",
+    description: "Continue a completed or failed Claude job within its immutable implementation, review, or interpretation phase. Execution jobs cannot be continued; a repeat run requires a new start and approval quote. Start a fresh job when independence matters.",
     inputSchema: {
       type: "object",
       properties: { job_id: { type: "string" }, message: { type: "string" } },
@@ -384,11 +437,17 @@ const TOOL_DEFS = [
   },
   {
     name: "cancel",
-    description: "Cancel a running Claude job.",
+    description: "Cancel a running Claude job only after the user explicitly authorizes cancellation. Copy the exact authorization into approval_quote.",
     inputSchema: {
       type: "object",
-      properties: { job_id: { type: "string" } },
-      required: ["job_id"],
+      properties: {
+        job_id: { type: "string" },
+        approval_quote: {
+          type: "string",
+          description: "Exact user authorization to terminate this job. Never infer or fabricate it.",
+        },
+      },
+      required: ["job_id", "approval_quote"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },

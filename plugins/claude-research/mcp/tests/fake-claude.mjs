@@ -12,6 +12,7 @@ const sessionId = valueAfter("--session-id") || valueAfter("--resume") || "missi
 const prompt = valueAfter("-p") || "";
 const resumed = args.includes("--resume");
 const longTextLength = Number.parseInt(process.env.FAKE_CLAUDE_LONG_TEXT_LENGTH || "0", 10);
+const delayMs = Number.parseInt(process.env.FAKE_CLAUDE_DELAY_MS || "0", 10);
 const assistantText = longTextLength > 0
   ? "A".repeat(longTextLength)
   : resumed ? "Applied review feedback." : "Implemented the experiment.";
@@ -24,6 +25,10 @@ if (process.env.FAKE_CLAUDE_LOG) {
     process.env.FAKE_CLAUDE_LOG,
     `${JSON.stringify({ args, sessionId, prompt, resumed, cwd: process.cwd() })}\n`,
   );
+}
+
+if (delayMs > 0) {
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, delayMs));
 }
 
 console.log(

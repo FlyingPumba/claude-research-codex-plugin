@@ -1,7 +1,7 @@
 interface:
   display_name: "Delegate to Claude"
-  short_description: "Delegate research implementation to Opus"
-  default_prompt: "Use $delegate-to-claude to implement this agreed research plan with Opus and validate the resulting experiment."
+  short_description: "Discuss, implement, audit, and interpret with Opus"
+  default_prompt: "Use $delegate-to-claude to discuss and agree on a trustworthy experiment before any Opus implementation or execution."
 dependencies:
   tools:
     - type: "mcp"

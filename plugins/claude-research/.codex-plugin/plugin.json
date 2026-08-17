@@ -1,7 +1,7 @@
 {
   "name": "claude-research",
-  "version": "0.1.0+codex.20260817091509",
-  "description": "Delegate AI-safety research implementation and independent experiment audits from Codex to local Claude Code agents.",
+  "version": "0.1.0+codex.20260817093131",
+  "description": "Discuss AI-safety research with Codex, then explicitly approve local Claude implementation, independent audits, experiment execution, and interpretation.",
   "author": {
     "name": "Ivan Arcuschin"
   },
@@ -15,8 +15,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Claude Research",
-    "shortDescription": "Codex plans; local Opus agents implement and audit",
-    "longDescription": "Use Codex as the research interlocutor while local Claude Code agents implement code, review bugs, audit experiment design and measurement, falsify explanations, and interpret results.",
+    "shortDescription": "Codex discusses; approved Opus agents implement and audit",
+    "longDescription": "Use Codex as the research interlocutor while explicitly approved local Claude Code agents implement code, independently review bugs and research validity, run frozen experiments after separate approval, falsify explanations, and interpret results.",
     "developerName": "Ivan Arcuschin",
     "category": "Developer Tools",
     "capabilities": [
@@ -24,7 +24,7 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Implement this agreed experiment with Opus, then independently audit it",
+      "Help me turn this research question into a trustworthy experiment contract; do not implement it until I approve",
       "Audit whether this experiment can produce a trustworthy signal",
       "Interpret these results and identify alternative explanations"
     ]

@@ -22,6 +22,7 @@ Everything runs locally. The bundled MCP process launches the installed `claude`
 ## What it provides
 
 - A Codex skill for turning a research discussion into an explicit experiment contract.
+- A discussion-first state machine with separate implementation and experiment-execution approvals.
 - An asynchronous local MCP wrapper around Claude Code.
 - A shared policy layer containing the researcher's standing implementation and experiment-operation decisions.
 - Explicit regression, primary-path, edge-case, known-answer, and smoke-test expectations.
@@ -79,7 +80,13 @@ codex plugin add claude-research@claude-research-codex-plugin
 
 ## Using it
 
-Discuss the research question with Codex first. Before implementation, agree on:
+Start a new Codex conversation with something as simple as:
+
+> Use $delegate-to-claude. I want to investigate whether [research question]. Help me design a trustworthy experiment.
+
+The skill starts in discussion mode. Codex can reason with you and inspect the repository read-only, but it will not edit code, delegate to Opus, or launch an experiment until the corresponding approval boundary is crossed.
+
+Before implementation, agree on:
 
 - the claim the experiment could support;
 - the intervention, comparison, and unit of analysis;
@@ -90,31 +97,35 @@ Discuss the research question with Codex first. Before implementation, agree on:
 
 Example prompts:
 
-> Help me turn this hypothesis into an experiment contract. Once we agree, have Opus implement it and independently audit the implementation, design, and measurement.
+> Help me turn this hypothesis into an experiment contract. Once we agree, ask for my approval before Opus implements it, then independently audit the implementation, design, and measurement.
 
 > Before I launch this expensive run, use fresh reviewers to determine whether a positive or negative result would actually be interpretable.
 
 > Inspect these raw outputs and resolved configs. Tell me whether this is a trustworthy signal, a provisional signal, or an uninformative run.
 
-The intended workflow is:
+The enforced workflow is:
 
-1. Codex and the researcher agree on the experiment contract.
-2. An `implementer` Claude session changes the code.
-3. Fresh `code-reviewer`, `experiment-auditor`, and `measurement-auditor` sessions gate the run.
-4. The implementer fixes critical findings; affected gates are rerun.
-5. A `falsifier` proposes decisive controls when alternative explanations matter.
-6. After execution, a fresh `results-interpreter` inspects the raw outputs, configuration, logs, and summaries.
-7. Codex synthesizes the evidence and bounds the claim.
+1. Codex and the researcher discuss and agree on the experiment contract without changing code.
+2. The researcher explicitly approves implementation; the exact approval is attached to a new `implementation` job.
+3. An `implementer` Claude session changes code and runs tests or cheap smoke checks, but cannot launch the full experiment.
+4. Fresh `code-reviewer`, `experiment-auditor`, and `measurement-auditor` jobs gate the run. A `falsifier` adds decisive controls when alternative explanations matter.
+5. The implementer fixes critical findings and affected gates are rerun.
+6. Codex reports the gate status and asks for a separate approval to execute the full experiment.
+7. A fresh `execution` job runs the frozen, audited contract without changing tracked experiment code.
+8. A fresh `results-interpreter` inspects raw outputs, resolved configuration, logs, and summaries.
+9. Codex synthesizes the evidence and bounds the claim.
+
+Questions, hypotheticals, planning requests, and phrases such as “how would we” are not treated as approval. Repeating a full run requires a new execution approval. Cancelling a running Claude job also requires explicit authorization.
 
 ## MCP tools
 
 | Tool | Purpose |
 | --- | --- |
-| `start` | Start a Claude job with a persona, working directory, model, effort, and self-contained brief. |
+| `start` | Start an immutable `implementation`, `review`, `execution`, or `interpretation` phase. Implementation and execution require an exact user approval quote. |
 | `poll` | Stream new events from an asynchronous job until it reaches a terminal state. |
-| `reply` | Continue the same Claude session with fixes or follow-up questions. |
+| `reply` | Continue an implementation, review, or interpretation session. It cannot repeat or extend an execution job. |
 | `list` | List jobs known to the current local MCP process. |
-| `cancel` | Stop a running job. |
+| `cancel` | Stop a running job after recording the user's exact cancellation authorization. |
 | `personas` | List the available persona definitions. |
 
 The default model is `opus` with `high` effort. Override these defaults with:
@@ -134,6 +145,8 @@ This plugin is intentionally configured for trusted local machines and disposabl
 ```
 
 Claude can therefore read, modify, execute, and delete files accessible to the current user. Install this plugin only if that is the behavior you want, review the source first, and do not use it in an untrusted checkout or on a machine where those permissions are inappropriate.
+
+The approval quote is an auditable workflow guardrail, not cryptographic authorization or a sandbox boundary. Codex is instructed not to infer or fabricate it, and the MCP refuses approval-sensitive calls when it is absent; both agents still run in the deliberately permissive local environment described above.
 
 No Claude or Anthropic credentials are included in this repository. Each user authenticates their own local Claude Code installation.
 

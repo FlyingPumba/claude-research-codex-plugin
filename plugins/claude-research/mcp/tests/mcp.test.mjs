@@ -111,6 +111,10 @@ test("advertises the local research contract and personas", async (t) => {
     tools.map((tool) => tool.name),
     ["start", "poll", "reply", "list", "cancel", "personas"],
   );
+  const startTool = tools.find((tool) => tool.name === "start");
+  const cancelTool = tools.find((tool) => tool.name === "cancel");
+  assert.deepEqual(startTool.inputSchema.required, ["brief", "phase"]);
+  assert.deepEqual(cancelTool.inputSchema.required, ["job_id", "approval_quote"]);
 
   const personaResult = await client.call("personas");
   assert.deepEqual(
@@ -139,10 +143,17 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
   const started = await client.call("start", {
     cwd: temp,
     persona: "implementer",
+    phase: "implementation",
+    approval_quote: "I approve this contract and its implementation.",
     brief: "Implement a seeded synthetic experiment and persist raw measurements.",
   });
   assert.equal(started.isError, undefined);
   assert.equal(started.structuredContent.model, "opus");
+  assert.equal(started.structuredContent.phase, "implementation");
+  assert.equal(
+    started.structuredContent.approval_quote,
+    "I approve this contract and its implementation.",
+  );
   const jobId = started.structuredContent.job_id;
 
   const first = await pollUntilTerminal(client, jobId);
@@ -169,6 +180,9 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
   assert.ok(invocations[0].args.includes("--dangerously-skip-permissions"));
   assert.equal(invocations[0].args[invocations[0].args.indexOf("--model") + 1], "opus");
   assert.equal(invocations[0].args[invocations[0].args.indexOf("--effort") + 1], "high");
+  assert.match(invocations[0].prompt, /WORKFLOW PHASE: implementation/);
+  assert.match(invocations[0].prompt, /I approve this contract and its implementation\./);
+  assert.match(invocations[0].prompt, /FORBIDDEN: launch the full, expensive/);
   assert.match(
     invocations[0].args[invocations[0].args.indexOf("--append-system-prompt") + 1],
     /scientific contract/i,
@@ -191,6 +205,7 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
   );
   assert.equal(invocations[1].args[invocations[1].args.indexOf("--resume") + 1], jobId);
   assert.equal(invocations[1].resumed, true);
+  assert.match(invocations[1].prompt, /WORKFLOW PHASE: implementation/);
 });
 
 test("preserves long Claude evidence without truncation", async (t) => {
@@ -206,6 +221,8 @@ test("preserves long Claude evidence without truncation", async (t) => {
   const started = await client.call("start", {
     cwd: temp,
     persona: "implementer",
+    phase: "implementation",
+    approval_quote: "Implement the agreed diagnostic.",
     brief: "Return complete diagnostic evidence.",
   });
   const completed = await pollUntilTerminal(client, started.structuredContent.job_id);
@@ -229,8 +246,122 @@ test("rejects an unknown persona without launching Claude", async (t) => {
   const result = await client.call("start", {
     cwd: temp,
     persona: "agreeable-helper",
+    phase: "review",
     brief: "Do something vague.",
   });
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /Unknown persona/);
+});
+
+test("enforces phase, persona, and separate approval boundaries", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
+  const client = new McpClient({
+    CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
+    FAKE_CLAUDE_LOG: join(temp, "claude.jsonl"),
+  });
+  t.after(() => client.close());
+  await client.initialize();
+
+  const missingPhase = await client.call("start", {
+    cwd: temp,
+    persona: "implementer",
+    brief: "Implement the contract.",
+  });
+  assert.equal(missingPhase.isError, true);
+  assert.match(missingPhase.content[0].text, /phase must be one of/);
+
+  const missingImplementationApproval = await client.call("start", {
+    cwd: temp,
+    persona: "implementer",
+    phase: "implementation",
+    brief: "Implement the contract.",
+  });
+  assert.equal(missingImplementationApproval.isError, true);
+  assert.match(missingImplementationApproval.content[0].text, /approval_quote is required/);
+
+  const wrongPersona = await client.call("start", {
+    cwd: temp,
+    persona: "code-reviewer",
+    phase: "implementation",
+    approval_quote: "Implement the contract.",
+    brief: "Implement the contract.",
+  });
+  assert.equal(wrongPersona.isError, true);
+  assert.match(wrongPersona.content[0].text, /is not allowed in phase 'implementation'/);
+
+  const review = await client.call("start", {
+    cwd: temp,
+    persona: "code-reviewer",
+    phase: "review",
+    brief: "Independently inspect the implementation against the frozen contract.",
+  });
+  assert.equal(review.isError, undefined);
+  const completedReview = await pollUntilTerminal(client, review.structuredContent.job_id);
+  assert.equal(completedReview.snapshot.phase, "review");
+  assert.equal(completedReview.snapshot.approval_quote, null);
+
+  const missingExecutionApproval = await client.call("start", {
+    cwd: temp,
+    persona: "implementer",
+    phase: "execution",
+    brief: "Run the frozen, audited experiment.",
+  });
+  assert.equal(missingExecutionApproval.isError, true);
+  assert.match(missingExecutionApproval.content[0].text, /approval_quote is required/);
+
+  const execution = await client.call("start", {
+    cwd: temp,
+    persona: "implementer",
+    phase: "execution",
+    approval_quote: "Launch the frozen experiment now.",
+    brief: "Run the frozen, audited experiment without changing tracked code.",
+  });
+  assert.equal(execution.isError, undefined);
+  const completedExecution = await pollUntilTerminal(client, execution.structuredContent.job_id);
+  assert.equal(completedExecution.snapshot.phase, "execution");
+
+  const executionReply = await client.call("reply", {
+    job_id: execution.structuredContent.job_id,
+    message: "Run it again.",
+  });
+  assert.equal(executionReply.isError, true);
+  assert.match(executionReply.content[0].text, /Execution jobs cannot be continued/);
+});
+
+test("requires explicit approval before cancelling a running job", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
+  const client = new McpClient({
+    CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
+    FAKE_CLAUDE_LOG: join(temp, "claude.jsonl"),
+    FAKE_CLAUDE_DELAY_MS: "10000",
+  });
+  t.after(() => client.close());
+  await client.initialize();
+
+  const started = await client.call("start", {
+    cwd: temp,
+    persona: "implementer",
+    phase: "implementation",
+    approval_quote: "Implement the agreed contract.",
+    brief: "Implement a deliberately slow test fixture.",
+  });
+
+  const rejected = await client.call("cancel", { job_id: started.structuredContent.job_id });
+  assert.equal(rejected.isError, true);
+  assert.match(rejected.content[0].text, /approval_quote is required to cancel/);
+
+  const cancelled = await client.call("cancel", {
+    job_id: started.structuredContent.job_id,
+    approval_quote: "Cancel that running job.",
+  });
+  assert.equal(cancelled.isError, undefined);
+  assert.equal(cancelled.structuredContent.status, "cancelling");
+
+  const terminal = await pollUntilTerminal(client, started.structuredContent.job_id);
+  assert.equal(terminal.snapshot.status, "cancelled");
+  assert.ok(
+    terminal.events.some(
+      (event) => event.kind === "cancel_requested" && event.approval_quote === "Cancel that running job.",
+    ),
+  );
 });
