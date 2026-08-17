@@ -1,13 +1,21 @@
 ---
 name: delegate-to-claude
-description: Discuss and formalize AI-safety research with Codex before explicitly approved local Claude Code/Opus implementation, independent audits, separately approved experiment execution, and evidence-based interpretation. Use when the user wants Codex to remain the research interlocutor while Claude implements or reviews an experiment, or whenever a research conclusion depends on code producing a trustworthy signal.
+description: Implement and iterate on AI-safety research experiments through explicitly approved local Claude Code/Opus implementation, independent audits, separately approved execution, and evidence-based interpretation. Use only for work on research experiment code or runs, such as implementing or revising an agreed experiment, auditing its implementation or validity, executing it, controlling an active experiment job, or interpreting its results. Do not use for ordinary research discussion or planning, hypothetical implementation questions, plugin development or maintenance, or other non-experiment software work.
 ---
 
 # Delegate to Claude
 
 Keep Codex responsible for research dialogue, synthesis, and epistemic judgment. Use the `claude_research` MCP tools to give implementation and independent audits to fresh Claude Code sessions. Do not make implementation edits directly while using this workflow; send corrections to the implementer session.
 
-Read [experiment-trust.md](references/experiment-trust.md) before implementing or interpreting a consequential experiment.
+## Stay within research experiments
+
+Apply this workflow only to implementing, revising, auditing, running, controlling, or interpreting a research experiment. Handle development, maintenance, testing, validation, release, and reinstallation of this plugin directly in Codex. Handle other non-experiment software work through the normal Codex workflow.
+
+## Keep discussion implicit
+
+Treat ordinary research discussion and planning as normal Codex dialogue, not activation of this skill. Answer the research substance directly. If the skill was explicitly invoked before implementation approval, do not repeatedly restate the phase, the lack of authorization, or the absence of a Claude job. Ask once for implementation approval when the experiment contract and plan are ready.
+
+Read [experiment-trust.md](references/experiment-trust.md) before implementing or interpreting a consequential experiment. Do not read it merely to establish the workflow phase or answer ordinary planning questions.
 
 ## Follow the approval state machine
 

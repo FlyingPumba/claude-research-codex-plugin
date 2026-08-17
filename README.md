@@ -21,7 +21,7 @@ Everything runs locally. The bundled MCP process launches the installed `claude`
 
 ## What it provides
 
-- A Codex skill for turning a research discussion into an explicit experiment contract.
+- A Codex skill for implementing and iterating on an agreed research experiment.
 - A discussion-first state machine with separate implementation and experiment-execution approvals.
 - An asynchronous local MCP wrapper around Claude Code.
 - A shared policy layer containing the researcher's standing implementation and experiment-operation decisions.
@@ -80,11 +80,15 @@ codex plugin add claude-research@claude-research-codex-plugin
 
 ## Using it
 
-Start a new Codex conversation with something as simple as:
+Start the research discussion with Codex normally:
 
-> Use $delegate-to-claude. I want to investigate whether [research question]. Help me design a trustworthy experiment.
+> I want to investigate whether [research question]. Help me design a trustworthy experiment.
 
-The skill starts in discussion mode. Codex can reason with you and inspect the repository read-only, but it will not edit code, delegate to Opus, or launch an experiment until the corresponding approval boundary is crossed.
+Do not invoke the skill during ordinary research discussion or planning. When the contract and implementation plan are ready, approve the handoff explicitly:
+
+> Use $delegate-to-claude to implement the experiment we agreed above.
+
+The skill is scoped to implementing and iterating on research experiments. It does not apply to maintaining this plugin or to other non-experiment software work. It will not launch the full experiment until the separate execution-approval boundary is crossed.
 
 Before implementation, agree on:
 
@@ -97,7 +101,9 @@ Before implementation, agree on:
 
 Example prompts:
 
-> Help me turn this hypothesis into an experiment contract. Once we agree, ask for my approval before Opus implements it, then independently audit the implementation, design, and measurement.
+> Help me turn this hypothesis into an experiment contract. Do not implement it yet.
+
+> Use $delegate-to-claude to implement the agreed contract, then independently audit the implementation, design, and measurement.
 
 > Before I launch this expensive run, use fresh reviewers to determine whether a positive or negative result would actually be interpretable.
 
