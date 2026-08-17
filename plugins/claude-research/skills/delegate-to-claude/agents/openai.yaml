@@ -1,0 +1,11 @@
+interface:
+  display_name: "Delegate to Claude"
+  short_description: "Delegate research implementation to Opus"
+  default_prompt: "Use $delegate-to-claude to implement this agreed research plan with Opus and validate the resulting experiment."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "claude_research"
+      description: "Local Claude Code executor and research auditors"
+policy:
+  allow_implicit_invocation: true

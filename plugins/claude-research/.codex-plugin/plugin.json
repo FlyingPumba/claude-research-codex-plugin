@@ -1,0 +1,33 @@
+{
+  "name": "claude-research",
+  "version": "0.1.0+codex.20260817085651",
+  "description": "Delegate AI-safety research implementation and independent experiment audits from Codex to local Claude Code agents.",
+  "author": {
+    "name": "Ivan Arcuschin"
+  },
+  "repository": "https://github.com/FlyingPumba/claude-research-codex-plugin",
+  "keywords": [
+    "ai-safety",
+    "research",
+    "claude-code",
+    "experiment-auditing"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Claude Research",
+    "shortDescription": "Codex plans; local Opus agents implement and audit",
+    "longDescription": "Use Codex as the research interlocutor while local Claude Code agents implement code, review bugs, audit experiment design and measurement, falsify explanations, and interpret results.",
+    "developerName": "Ivan Arcuschin",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Implement this agreed experiment with Opus, then independently audit it",
+      "Audit whether this experiment can produce a trustworthy signal",
+      "Interpret these results and identify alternative explanations"
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "claude_research": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "mcp/index.mjs"
+      ],
+      "cwd": "."
+    }
+  }
+}

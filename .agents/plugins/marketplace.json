@@ -1,0 +1,20 @@
+{
+  "name": "claude-research-codex-plugin",
+  "interface": {
+    "displayName": "Claude Research Codex Plugin"
+  },
+  "plugins": [
+    {
+      "name": "claude-research",
+      "source": {
+        "source": "local",
+        "path": "./plugins/claude-research"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
