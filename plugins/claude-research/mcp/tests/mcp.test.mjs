@@ -117,7 +117,8 @@ test("advertises the local research contract and personas", async (t) => {
   assert.deepEqual(startTool.inputSchema.required, ["brief", "phase"]);
   assert.equal(pollTool.inputSchema.properties.wait_ms.maximum, 60_000);
   assert.match(pollTool.description, /60000/);
-  assert.deepEqual(cancelTool.inputSchema.required, ["job_id", "approval_quote"]);
+  assert.deepEqual(cancelTool.inputSchema.required, ["job_id"]);
+  assert.match(cancelTool.description, /full authority over worker lifecycle/i);
 
   const personaResult = await client.call("personas");
   assert.deepEqual(
@@ -335,7 +336,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
   assert.match(executionReply.content[0].text, /Execution jobs cannot be continued/);
 });
 
-test("requires explicit approval before cancelling a running job", async (t) => {
+test("lets Codex cancel a running Claude without separate user approval", async (t) => {
   const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
   const client = new McpClient({
     CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
@@ -353,13 +354,9 @@ test("requires explicit approval before cancelling a running job", async (t) => 
     brief: "Implement a deliberately slow test fixture.",
   });
 
-  const rejected = await client.call("cancel", { job_id: started.structuredContent.job_id });
-  assert.equal(rejected.isError, true);
-  assert.match(rejected.content[0].text, /approval_quote is required to cancel/);
-
   const cancelled = await client.call("cancel", {
     job_id: started.structuredContent.job_id,
-    approval_quote: "Cancel that running job.",
+    reason: "Redundant broad test rerun after documentation-only edits.",
   });
   assert.equal(cancelled.isError, undefined);
   assert.equal(cancelled.structuredContent.status, "cancelling");
@@ -368,7 +365,9 @@ test("requires explicit approval before cancelling a running job", async (t) => 
   assert.equal(terminal.snapshot.status, "cancelled");
   assert.ok(
     terminal.events.some(
-      (event) => event.kind === "cancel_requested" && event.approval_quote === "Cancel that running job.",
+      (event) =>
+        event.kind === "cancel_requested" &&
+        event.reason === "Redundant broad test rerun after documentation-only edits.",
     ),
   );
 });

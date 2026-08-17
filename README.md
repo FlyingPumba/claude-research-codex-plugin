@@ -27,6 +27,7 @@ Everything runs locally. The bundled MCP process launches the installed `claude`
 - A shared policy layer containing the researcher's standing implementation and experiment-operation decisions.
 - Explicit regression, primary-path, edge-case, known-answer, and smoke-test expectations.
 - Continued implementation sessions for review feedback and fixes.
+- Full Codex authority over delegated Claude workers, including cancellation, redirection, restart, and continuation without separate approval.
 - Fresh, independent Claude sessions for audits where anchoring would be dangerous.
 - Six research-oriented personas:
 
@@ -82,16 +83,7 @@ The `marketplace add` command is a one-time registration step. The local marketp
 
 ### Reinstall after local changes
 
-If you switched away from a custom Codex build, first confirm that your shell resolves the intended CLI:
-
-```bash
-command -v codex
-codex --version
-```
-
-On an Apple Silicon Homebrew installation, the first command normally reports `/opt/homebrew/bin/codex`. If it still reports an old custom path, run `rehash` in zsh or open a new terminal before continuing.
-
-Then, from the repository root, run:
+From the repository root, run:
 
 ```bash
 # Give the changed plugin a fresh cache key.
@@ -159,7 +151,9 @@ The enforced workflow is:
 
 Implementation approval remains valid for the agreed work package. Codex should not repeatedly re-litigate or narrate that boundary; it returns to the user only for a materially expanded scope, an unresolved scientific choice, a destructive action, or approval of the consequential run.
 
-Questions, hypotheticals, planning requests, and phrases such as “how would we” are not treated as approval. Repeating a full run requires a new execution approval. Cancelling a running Claude job also requires explicit authorization.
+Within an approved phase, Codex has full authority over every delegated Claude worker. It may cancel, redirect, restart, or continue jobs without asking for separate permission. This worker-lifecycle authority does not permit a new or repeated experiment execution without the corresponding execution approval.
+
+Questions, hypotheticals, planning requests, and phrases such as “how would we” are not treated as approval. Repeating a full run requires a new execution approval.
 
 ## MCP tools
 
@@ -169,7 +163,7 @@ Questions, hypotheticals, planning requests, and phrases such as “how would we
 | `poll` | Stream new events from an asynchronous job until it reaches a terminal state. |
 | `reply` | Continue an implementation, review, or interpretation session. It cannot repeat or extend an execution job. |
 | `list` | List jobs known to the current local MCP process. |
-| `cancel` | Stop a running job after recording the user's exact cancellation authorization. |
+| `cancel` | Let Codex stop any running Claude worker immediately, recording an optional reason but requiring no separate user approval. |
 | `personas` | List the available persona definitions. |
 
 The default model is `opus` with `high` effort. Override these defaults with:
@@ -190,7 +184,7 @@ This plugin is intentionally configured for trusted local machines and disposabl
 
 Claude can therefore read, modify, execute, and delete files accessible to the current user. Install this plugin only if that is the behavior you want, review the source first, and do not use it in an untrusted checkout or on a machine where those permissions are inappropriate.
 
-The approval quote is an auditable workflow guardrail, not cryptographic authorization or a sandbox boundary. Codex is instructed not to infer or fabricate it, and the MCP refuses approval-sensitive calls when it is absent; both agents still run in the deliberately permissive local environment described above.
+The approval quote is an auditable workflow guardrail for starting implementation and execution phases, not cryptographic authorization or a sandbox boundary. Codex is instructed not to infer or fabricate it, and the MCP refuses those phase-transition calls when it is absent. Once a Claude is delegated, Codex controls that worker's lifecycle; both agents still run in the deliberately permissive local environment described above.
 
 No Claude or Anthropic credentials are included in this repository. Each user authenticates their own local Claude Code installation.
 

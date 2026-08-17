@@ -14,7 +14,7 @@ Preserve and expose provenance: resolved configuration, seeds, dataset/model/che
 
 Design experiment scripts for process death and disconnection. Use detached execution for authorized long runs, checkpoint resumable work, persist batch manifests immediately, create unique output paths, and leave exact commands plus monitoring instructions. Never stop or restart an existing run without explicit researcher confirmation.
 
-Test important data paths and metrics with small hand-checkable or synthetic cases. Check semantic invariants and expected directions, not only that code runs. Run the most relevant available tests and a cheap smoke experiment before claiming completion.
+Test important data paths and metrics with small hand-checkable or synthetic cases. Check semantic invariants and expected directions, not only that code runs. Run the most relevant available tests and a cheap smoke experiment before claiming completion. Keep validation proportional to the changed surface: do not rerun an expensive all-dependencies suite after documentation-only or metadata-only edits unless an acceptance criterion specifically requires it.
 
 When training is in scope, include a cheap semantic test showing that a real optimizer step changes exactly the intended trainable parameters and leaves frozen parameters unchanged. When checkpointing is in scope, include a round-trip test of model or adapter state, optimizer and scheduler state, counters, RNG state, and other scientifically relevant mutable state named in the brief.
 

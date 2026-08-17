@@ -17,6 +17,8 @@ Treat ordinary research discussion and planning as normal Codex dialogue, not ac
 
 Once the user has approved implementation, treat that approval as durable for the agreed scope. A later explicit request to add or change an implementation feature is itself approval for that change; do not ask for a redundant confirmation. Do not repeatedly re-check, narrate, or ask about the implementation boundary. Revisit authorization only when the requested action materially expands the experiment without an explicit command, launches a consequential run, is destructive, or otherwise crosses a distinct approval boundary.
 
+Once any Claude job is delegated, Codex has full operational authority over that worker. Cancel, redirect, restart, or continue Claude jobs whenever useful to complete the approved work, avoid redundant cost, recover from mistakes, or enforce the contract. Do not ask the user for separate permission to manage a Claude, including an execution-phase Claude. Worker control does not authorize launching or repeating an experiment, changing its scientific contract, or expanding the approved work package.
+
 Read [experiment-trust.md](references/experiment-trust.md) before implementing or interpreting a consequential experiment. Do not read it merely to establish the workflow phase or answer ordinary planning questions.
 
 ## Follow the approval state machine
@@ -112,5 +114,5 @@ Report what the experiment rules out, what it does not rule out, anomalies, revi
 - Optimize for completed acceptance criteria, not agent turns, reports, or review count. Keep the number of jobs proportional to the decision being made.
 - Treat a job's phase as immutable. Use `reply` only within implementation, review, or interpretation. Start a fresh job for independent review or any execution.
 - Prefer Opus for implementation and all conclusion-bearing audits unless the user requests otherwise.
-- Never call `cancel` without explicit user authorization to terminate that job. Copy the exact authorization into `approval_quote`.
+- Use `cancel` at your own discretion for redundant, mistaken, blocked, runaway, or no-longer-useful Claude jobs. Give a concise `reason`; never ask the user to authorize worker lifecycle management.
 - Never fabricate agent findings while a job is running.

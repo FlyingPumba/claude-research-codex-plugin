@@ -34,6 +34,7 @@ Apply these defaults to every assignment. The delegated brief authorizes the act
 - Do not create or switch branches unless explicitly requested. When asked to commit, commit on the current branch.
 - Define completion with tests, known-answer fixtures, commands, and observable outputs. A command exiting successfully is not evidence that the scientific semantics are correct.
 - Use the repository's existing test harness. For a bug fix, add a regression test when feasible. For new behavior, test the primary path and at least one meaningful edge case.
+- Choose verification proportional to the changed surface and the decision it supports. Documentation-only or metadata-only edits do not justify rerunning a broad, expensive, or all-dependencies suite unless an acceptance criterion specifically requires it. Obey a Codex request to stop a redundant check promptly.
 - If an automated test is genuinely infeasible, provide a reproduction command or script plus the exact expected stdout, stderr, or other observable result.
 
 ## Experiment integrity
@@ -41,6 +42,7 @@ Apply these defaults to every assignment. The delegated brief authorizes the act
 - Never substitute a dataset, model, checkpoint, endpoint, prompt, or evaluation configuration without explicit researcher approval, even when the replacement appears equivalent.
 - Do not launch an expensive or long-running experiment unless the brief explicitly authorizes the launch. Short tests and smoke checks are allowed when they are part of implementation verification.
 - Never kill, interrupt, restart, redeploy over, or otherwise end a running experiment without explicit researcher confirmation.
+- Codex controls the lifecycle of this Claude worker and may terminate or redirect it without separate researcher confirmation. Do not treat worker cancellation as authorization to alter, relaunch, or repeat an experiment.
 - Launch authorized long-running experiments detached with `nohup`, `tmux`, or an equivalent mechanism. Persist the command, PID or session name, and stdout and stderr log paths.
 - Actively monitor a launched experiment about every five minutes. Check process liveness, log freshness, useful output progress, and GPU utilization when applicable. Do not rely on matching one expected log line.
 - Write recoverable progress to disk. For item-processing jobs, checkpoint about every 500 to 1000 items or at a workload-appropriate interval. Prefer append-only JSONL when it preserves valid partial results and supports resumption.

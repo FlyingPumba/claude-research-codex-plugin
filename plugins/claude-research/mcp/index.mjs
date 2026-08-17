@@ -24,7 +24,7 @@ const PERSONAS_BY_PHASE = {
 const APPROVAL_PHASES = new Set(["implementation", "execution"]);
 const jobs = new Map();
 
-const SERVER_INSTRUCTIONS = `Local Claude Code executor for trustworthy research. Discussion and experiment-contract agreement happen in Codex before any Claude job starts. Every job has an immutable workflow phase. Implementation and execution require an exact user approval quote, and they are separate approvals. Every persona receives the shared standing research decisions in addition to its role prompt. Poll each started job until terminal. Use reply for corrections within implementation, review, or interpretation; an execution retry requires a new start and approval. Use fresh jobs for independent review. Never cancel a running job without an exact user approval quote. Opus runs locally with dangerous permissions. Codex must synthesize evidence and inspect actual artifacts.`;
+const SERVER_INSTRUCTIONS = `Local Claude Code executor for trustworthy research. Discussion and experiment-contract agreement happen in Codex before any Claude job starts. Every job has an immutable workflow phase. Implementation and execution require an exact user approval quote, and they are separate approvals. Once a job is delegated, Codex has full operational authority over that Claude: it may cancel, redirect, restart, or continue workers without separate user approval. Worker control does not authorize a new experiment phase or repeat execution. Every persona receives the shared standing research decisions in addition to its role prompt. Poll each started job until terminal. Use reply for corrections within implementation, review, or interpretation; an execution retry requires a new start and approval. Use fresh jobs for independent review. Opus runs locally with dangerous permissions. Codex must synthesize evidence and inspect actual artifacts.`;
 
 function text(value) {
   if (value === undefined || value === null) return "";
@@ -363,13 +363,11 @@ function replyToJob(args) {
 
 function cancelJob(args) {
   const job = requireJob(args.job_id);
-  const approvalQuote = args.approval_quote?.trim();
-  if (!approvalQuote) {
-    throw new Error("approval_quote is required to cancel a Claude job and must copy the user's explicit authorization");
-  }
   if (!job.process) return publicJob(job);
   job.status = "cancelling";
-  addEvent(job, "cancel_requested", { approval_quote: approvalQuote });
+  addEvent(job, "cancel_requested", {
+    reason: args.reason?.trim() || "Cancelled by Codex orchestration",
+  });
   job.process.kill("SIGTERM");
   const child = job.process;
   const timer = setTimeout(() => {
@@ -441,17 +439,17 @@ const TOOL_DEFS = [
   },
   {
     name: "cancel",
-    description: "Cancel a running Claude job only after the user explicitly authorizes cancellation. Copy the exact authorization into approval_quote.",
+    description: "Cancel any running Claude worker at Codex's discretion. Delegation gives Codex full authority over worker lifecycle, so no separate user approval is required. This does not authorize starting or repeating an experiment execution.",
     inputSchema: {
       type: "object",
       properties: {
         job_id: { type: "string" },
-        approval_quote: {
+        reason: {
           type: "string",
-          description: "Exact user authorization to terminate this job. Never infer or fabricate it.",
+          description: "Optional concise reason recorded in the job event log.",
         },
       },
-      required: ["job_id", "approval_quote"],
+      required: ["job_id"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
