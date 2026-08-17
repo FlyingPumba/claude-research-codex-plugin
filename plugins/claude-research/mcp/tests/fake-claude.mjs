@@ -42,6 +42,15 @@ console.log(
 );
 console.log(
   JSON.stringify({
+    type: "system",
+    subtype: "thinking_tokens",
+    estimated_tokens: 100,
+    estimated_tokens_delta: 100,
+    session_id: sessionId,
+  }),
+);
+console.log(
+  JSON.stringify({
     type: "assistant",
     message: {
       content: [

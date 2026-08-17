@@ -99,6 +99,10 @@ function userEvents(message) {
 }
 
 function consumeClaudeMessage(job, message) {
+  if (message?.type === "system" && message.subtype === "thinking_tokens") {
+    return;
+  }
+
   if (message?.type === "system" && message.subtype === "init") {
     addEvent(job, "session_init", {
       session_id: message.session_id || job.sessionId,
@@ -330,7 +334,7 @@ function waitForEvents(job, cursor, waitMs) {
 async function pollJob(args) {
   const job = requireJob(args.job_id);
   const cursor = Number.isInteger(args.cursor) && args.cursor >= 0 ? args.cursor : 0;
-  const waitMs = Math.min(Math.max(Number(args.wait_ms) || 0, 0), 30_000);
+  const waitMs = Math.min(Math.max(Number(args.wait_ms) || 0, 0), 60_000);
   const maxEvents = Math.min(Math.max(Number(args.max_events) || 50, 1), 200);
   await waitForEvents(job, cursor, waitMs);
   const available = job.events.filter((event) => event.seq >= cursor);
@@ -404,13 +408,13 @@ const TOOL_DEFS = [
   },
   {
     name: "poll",
-    description: "Read new events from a Claude job. Preserve and resend next_cursor. Set wait_ms up to 30000 to wait efficiently. Continue until status is completed, failed, or cancelled and inspect result plus process_exit.",
+    description: "Read new events from a Claude job. Preserve and resend next_cursor. Set wait_ms up to 60000 to wait efficiently. Continue until status is completed, failed, or cancelled and inspect result plus process_exit.",
     inputSchema: {
       type: "object",
       properties: {
         job_id: { type: "string" },
         cursor: { type: "integer", minimum: 0, default: 0 },
-        wait_ms: { type: "integer", minimum: 0, maximum: 30000, default: 0 },
+        wait_ms: { type: "integer", minimum: 0, maximum: 60000, default: 0 },
         max_events: { type: "integer", minimum: 1, maximum: 200, default: 50 },
       },
       required: ["job_id"],

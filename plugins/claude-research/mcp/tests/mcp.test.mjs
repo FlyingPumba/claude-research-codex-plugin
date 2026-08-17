@@ -112,8 +112,11 @@ test("advertises the local research contract and personas", async (t) => {
     ["start", "poll", "reply", "list", "cancel", "personas"],
   );
   const startTool = tools.find((tool) => tool.name === "start");
+  const pollTool = tools.find((tool) => tool.name === "poll");
   const cancelTool = tools.find((tool) => tool.name === "cancel");
   assert.deepEqual(startTool.inputSchema.required, ["brief", "phase"]);
+  assert.equal(pollTool.inputSchema.properties.wait_ms.maximum, 60_000);
+  assert.match(pollTool.description, /60000/);
   assert.deepEqual(cancelTool.inputSchema.required, ["job_id", "approval_quote"]);
 
   const personaResult = await client.call("personas");
@@ -161,6 +164,10 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
   assert.equal(first.snapshot.last_result.result, "Implementation complete.");
   assert.ok(first.events.some((event) => event.kind === "assistant_text"));
   assert.ok(first.events.some((event) => event.kind === "tool_use"));
+  assert.equal(
+    first.events.some((event) => event.kind === "claude_event" && event.data.includes("thinking_tokens")),
+    false,
+  );
 
   const replied = await client.call("reply", {
     job_id: jobId,
