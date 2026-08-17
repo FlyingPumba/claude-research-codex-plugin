@@ -11,6 +11,13 @@ const valueAfter = (flag) => {
 const sessionId = valueAfter("--session-id") || valueAfter("--resume") || "missing-session";
 const prompt = valueAfter("-p") || "";
 const resumed = args.includes("--resume");
+const longTextLength = Number.parseInt(process.env.FAKE_CLAUDE_LONG_TEXT_LENGTH || "0", 10);
+const assistantText = longTextLength > 0
+  ? "A".repeat(longTextLength)
+  : resumed ? "Applied review feedback." : "Implemented the experiment.";
+const resultText = longTextLength > 0
+  ? "R".repeat(longTextLength)
+  : resumed ? "Review corrections complete." : "Implementation complete.";
 
 if (process.env.FAKE_CLAUDE_LOG) {
   appendFileSync(
@@ -33,7 +40,7 @@ console.log(
     type: "assistant",
     message: {
       content: [
-        { type: "text", text: resumed ? "Applied review feedback." : "Implemented the experiment." },
+        { type: "text", text: assistantText },
         { type: "tool_use", name: "Bash", input: { command: "pytest -q" } },
       ],
     },
@@ -44,7 +51,7 @@ console.log(
     type: "result",
     subtype: "success",
     is_error: false,
-    result: resumed ? "Review corrections complete." : "Implementation complete.",
+    result: resultText,
     session_id: sessionId,
     total_cost_usd: 0.01,
     duration_ms: 5,

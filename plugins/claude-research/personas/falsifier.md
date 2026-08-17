@@ -7,3 +7,5 @@ Inspect the experiment contract, implementation, and available artifacts. Prefer
 For each plausible alternative, state what observation it predicts that the favored hypothesis does not. Propose a ranked set of negative controls, positive controls, ablations, swaps, perturbations, or synthetic cases. Favor tests that isolate one mechanism and can decisively change interpretation over broad requests for more data.
 
 Do not reward novelty for its own sake. Rank alternatives by plausibility and impact, identify which existing evidence already bears on them, and say what result would genuinely update you toward or away from the main claim.
+
+Do not converge on the favored explanation to be agreeable. Look for unapproved substitutions, silent fallbacks, failed or unmonitored runs, incomplete checkpoints, and missing provenance that could mimic either the expected effect or a null result.

@@ -10,18 +10,17 @@ import { fileURLToPath } from "node:url";
 const PROTOCOL_VERSION = "2025-06-18";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PERSONAS_DIR = process.env.CLAUDE_RESEARCH_PERSONAS_DIR || join(ROOT, "personas");
+const DECISIONS_PATH = process.env.CLAUDE_RESEARCH_DECISIONS_PATH || join(ROOT, "policies", "research-decisions.md");
 const CLAUDE_BIN = process.env.CLAUDE_RESEARCH_CLAUDE_BIN || "claude";
 const DEFAULT_MODEL = process.env.CLAUDE_RESEARCH_MODEL || "opus";
 const DEFAULT_EFFORT = process.env.CLAUDE_RESEARCH_EFFORT || "high";
-const MAX_TEXT = 12_000;
 const jobs = new Map();
 
-const SERVER_INSTRUCTIONS = `Local Claude Code executor for trustworthy research. Call start with an explicit persona and self-contained brief, then poll with the returned job_id and cursor until terminal. Use reply for corrections in the same Claude session; use a fresh start for independent review. Opus runs locally with dangerous permissions. Before trusting an experiment, independently use code-reviewer, experiment-auditor, and measurement-auditor; use falsifier for competing explanations and results-interpreter after runs. Codex must synthesize evidence and inspect actual artifacts.`;
+const SERVER_INSTRUCTIONS = `Local Claude Code executor for trustworthy research. Every persona receives the shared standing research decisions in addition to its role prompt. Call start with an explicit persona and self-contained brief, then poll with the returned job_id and cursor until terminal. Use reply for corrections in the same Claude session; use a fresh start for independent review. Opus runs locally with dangerous permissions. Before trusting an experiment, independently use code-reviewer, experiment-auditor, and measurement-auditor; use falsifier for competing explanations and results-interpreter after runs. Codex must synthesize evidence and inspect actual artifacts.`;
 
-function text(value, limit = MAX_TEXT) {
+function text(value) {
   if (value === undefined || value === null) return "";
-  const rendered = typeof value === "string" ? value : JSON.stringify(value);
-  return rendered.length <= limit ? rendered : `${rendered.slice(0, limit)}…[truncated]`;
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 function personaSummary(markdown) {
@@ -44,6 +43,7 @@ function loadPersonas() {
 }
 
 const personas = loadPersonas();
+const standingDecisions = readFileSync(DECISIONS_PATH, "utf8").trim();
 
 function addEvent(job, kind, data = {}) {
   const event = {
@@ -70,7 +70,7 @@ function assistantEvents(message) {
       events.push({
         kind: "tool_use",
         tool: block.name || "unknown",
-        input: text(block.input, 6_000),
+        input: text(block.input),
       });
     }
   }
@@ -86,7 +86,7 @@ function userEvents(message) {
       kind: "tool_result",
       tool_use_id: block.tool_use_id,
       is_error: Boolean(block.is_error),
-      content: text(block.content, 6_000),
+      content: text(block.content),
     }));
 }
 
@@ -132,7 +132,7 @@ function consumeClaudeMessage(job, message) {
   }
 
   if (message?.type && message.type !== "stream_event") {
-    addEvent(job, "claude_event", { type: message.type, data: text(message, 4_000) });
+    addEvent(job, "claude_event", { type: message.type, data: text(message) });
   }
 }
 
@@ -156,7 +156,7 @@ function claudeArgs(job, prompt, continuation) {
     job.effort,
     "--dangerously-skip-permissions",
     "--append-system-prompt",
-    personas[job.persona].prompt,
+    `${standingDecisions}\n\n${personas[job.persona].prompt}`,
   ];
   if (continuation) args.push("--resume", job.sessionId);
   else args.push("--session-id", job.sessionId);
@@ -186,13 +186,13 @@ function launch(job, prompt, continuation = false) {
     try {
       consumeClaudeMessage(job, JSON.parse(line));
     } catch {
-      addEvent(job, "unparsed_stdout", { text: text(line, 4_000) });
+      addEvent(job, "unparsed_stdout", { text: text(line) });
     }
   });
 
   const stderr = createInterface({ input: child.stderr });
   stderr.on("line", (line) => {
-    if (line.trim()) addEvent(job, "stderr", { text: text(line, 4_000) });
+    if (line.trim()) addEvent(job, "stderr", { text: text(line) });
   });
 
   child.on("error", (error) => {

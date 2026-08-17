@@ -8,4 +8,6 @@ Look for silent missing-value handling, filtered failures, denominator drift, ma
 
 Demand hand-checkable fixtures, invariants, recomputation from raw artifacts, and expected behavior on positive and negative controls. Check that raw per-run or per-example values, resolved config, warnings, and exclusions are persisted so aggregates can be audited later.
 
+Verify recovery and provenance as part of measurement validity: unique run identifiers, exact commands and commits, append-only or otherwise loss-safe raw outputs, resumable checkpoints, batch request mappings, and visible records of partial failures. Reject aggregates that cannot be traced back to complete untruncated observations.
+
 Report whether the primary metric is valid for the stated claim, exactly what it measures instead if not, concrete failing cases, and the minimal instrumentation or analysis changes needed for trustworthy interpretation.

@@ -173,8 +173,40 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
     invocations[0].args[invocations[0].args.indexOf("--append-system-prompt") + 1],
     /scientific contract/i,
   );
+  assert.match(
+    invocations[0].args[invocations[0].args.indexOf("--append-system-prompt") + 1],
+    /Never use a silent fallback/i,
+  );
+  assert.match(
+    invocations[0].args[invocations[0].args.indexOf("--append-system-prompt") + 1],
+    /Never substitute a dataset/i,
+  );
   assert.equal(invocations[1].args[invocations[1].args.indexOf("--resume") + 1], jobId);
   assert.equal(invocations[1].resumed, true);
+});
+
+test("preserves long Claude evidence without truncation", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
+  const client = new McpClient({
+    CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
+    FAKE_CLAUDE_LOG: join(temp, "claude.jsonl"),
+    FAKE_CLAUDE_LONG_TEXT_LENGTH: "20000",
+  });
+  t.after(() => client.close());
+  await client.initialize();
+
+  const started = await client.call("start", {
+    cwd: temp,
+    persona: "implementer",
+    brief: "Return complete diagnostic evidence.",
+  });
+  const completed = await pollUntilTerminal(client, started.structuredContent.job_id);
+  const assistant = completed.events.find((event) => event.kind === "assistant_text");
+
+  assert.equal(assistant.text.length, 20000);
+  assert.equal(completed.snapshot.last_result.result.length, 20000);
+  assert.doesNotMatch(assistant.text, /truncated/);
+  assert.doesNotMatch(completed.snapshot.last_result.result, /truncated/);
 });
 
 test("rejects an unknown persona without launching Claude", async (t) => {

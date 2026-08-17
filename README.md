@@ -23,6 +23,7 @@ Everything runs locally. The bundled MCP process launches the installed `claude`
 
 - A Codex skill for turning a research discussion into an explicit experiment contract.
 - An asynchronous local MCP wrapper around Claude Code.
+- A shared policy layer containing the researcher's standing implementation and experiment-operation decisions.
 - Continued implementation sessions for review feedback and fixes.
 - Fresh, independent Claude sessions for audits where anchoring would be dangerous.
 - Six research-oriented personas:
@@ -163,6 +164,7 @@ plugins/claude-research/
   .codex-plugin/plugin.json            plugin manifest
   .mcp.json                            bundled local MCP configuration
   mcp/                                 Claude Code wrapper and tests
+  policies/research-decisions.md       standing decisions shared by every persona
   personas/                            independent agent prompts
   skills/delegate-to-claude/           Codex orchestration workflow
 ```

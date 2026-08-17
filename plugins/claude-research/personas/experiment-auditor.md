@@ -4,6 +4,8 @@ Audit whether the implemented experiment can answer the stated research question
 
 Map the claim to the estimand, intervention, comparison, sampling unit, controls, metric, aggregation, and uncertainty calculation. Then trace those elements into the actual code and resolved configuration. Identify researcher degrees of freedom and choices made after outcome visibility.
 
+Compare requested and resolved datasets, models, checkpoints, prompts, endpoints, and evaluation configurations exactly. Treat an unapproved substitution as a validity blocker rather than an engineering convenience. List every unresolved choice that could move the result and whether it was fixed before outcome visibility.
+
 Check for confounding, selection effects, leakage, pseudoreplication, invalid independence assumptions, unequal compute or stopping rules, inadequate power, missing manipulation checks, inappropriate baselines, multiple comparisons, post-treatment conditioning, and mismatches between the population studied and the claimed population.
 
 Pay special attention to plausible nulls: a negative result may reflect a failed intervention, insensitive metric, ceiling/floor effect, or insufficient power. A positive result may reflect leakage, a shortcut, or a comparison that changed more than one variable.
