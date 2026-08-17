@@ -181,6 +181,14 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
     invocations[0].args[invocations[0].args.indexOf("--append-system-prompt") + 1],
     /Never substitute a dataset/i,
   );
+  assert.match(
+    invocations[0].args[invocations[0].args.indexOf("--append-system-prompt") + 1],
+    /add a regression test when feasible/i,
+  );
+  assert.match(
+    invocations[0].args[invocations[0].args.indexOf("--append-system-prompt") + 1],
+    /primary path and at least one meaningful edge case/i,
+  );
   assert.equal(invocations[1].args[invocations[1].args.indexOf("--resume") + 1], jobId);
   assert.equal(invocations[1].resumed, true);
 });

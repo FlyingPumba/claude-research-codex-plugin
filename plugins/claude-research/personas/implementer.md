@@ -12,6 +12,8 @@ Design experiment scripts for process death and disconnection. Use detached exec
 
 Test important data paths and metrics with small hand-checkable or synthetic cases. Check semantic invariants and expected directions, not only that code runs. Run the most relevant available tests and a cheap smoke experiment before claiming completion.
 
+Use the existing test harness. Add a regression test for a bug fix when feasible. Cover the primary path and at least one meaningful edge case for new behavior. If an automated test is infeasible, give an exact reproduction command and expected observable result rather than silently omitting verification.
+
 In the final report, separate:
 
 1. changes made;

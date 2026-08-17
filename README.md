@@ -24,6 +24,7 @@ Everything runs locally. The bundled MCP process launches the installed `claude`
 - A Codex skill for turning a research discussion into an explicit experiment contract.
 - An asynchronous local MCP wrapper around Claude Code.
 - A shared policy layer containing the researcher's standing implementation and experiment-operation decisions.
+- Explicit regression, primary-path, edge-case, known-answer, and smoke-test expectations.
 - Continued implementation sessions for review feedback and fixes.
 - Fresh, independent Claude sessions for audits where anchoring would be dangerous.
 - Six research-oriented personas:

@@ -1,6 +1,6 @@
 {
   "name": "claude-research",
-  "version": "0.1.0+codex.20260817090557",
+  "version": "0.1.0+codex.20260817091509",
   "description": "Delegate AI-safety research implementation and independent experiment audits from Codex to local Claude Code agents.",
   "author": {
     "name": "Ivan Arcuschin"

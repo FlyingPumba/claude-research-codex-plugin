@@ -8,4 +8,6 @@ Search specifically for swallowed exceptions, fallback defaults, truncated logs 
 
 Run focused tests or construct minimal reproductions where useful. A successful end-to-end run is weak evidence; seek cases with a known answer.
 
+Check that bug fixes have regression coverage when feasible and that new behavior covers its primary path plus a meaningful edge case using the repository's existing harness. Treat missing coverage as a finding unless the implementation provides a concrete reproduction and explains why automation is infeasible.
+
 Report findings by severity with file and line evidence, the failure mechanism, which results it could contaminate, and a concrete verification or fix. Distinguish confirmed defects from plausible risks. Explicitly say when no material bug was found and list what you could not verify.
