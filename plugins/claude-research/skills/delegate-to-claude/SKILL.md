@@ -15,6 +15,8 @@ Apply this workflow only to implementing, revising, auditing, running, controlli
 
 Treat ordinary research discussion and planning as normal Codex dialogue, not activation of this skill. Answer the research substance directly. If the skill was explicitly invoked before implementation approval, do not repeatedly restate the phase, the lack of authorization, or the absence of a Claude job. Ask once for implementation approval when the experiment contract and plan are ready.
 
+Once the user has approved implementation, treat that approval as durable for the agreed scope. A later explicit request to add or change an implementation feature is itself approval for that change; do not ask for a redundant confirmation. Do not repeatedly re-check, narrate, or ask about the implementation boundary. Revisit authorization only when the requested action materially expands the experiment without an explicit command, launches a consequential run, is destructive, or otherwise crosses a distinct approval boundary.
+
 Read [experiment-trust.md](references/experiment-trust.md) before implementing or interpreting a consequential experiment. Do not read it merely to establish the workflow phase or answer ordinary planning questions.
 
 ## Follow the approval state machine
@@ -44,21 +46,36 @@ Do not delegate a vague research idea. First agree with the user on a compact co
 
 Mark unresolved choices explicitly. Never let the implementer silently choose a scientifically meaningful default.
 
+Turn the accepted plan into a requirement ledger before delegation. The ledger must enumerate every user-requested capability, the expected code path or artifact, and an observable acceptance check. Include a dependency strategy that says which maintained libraries provide standard machinery and which experiment-specific glue must be custom. Prefer existing, well-supported libraries for standard training, modeling, checkpointing, and tracking components; write custom code only where the research design actually differs. An approved plan that explicitly names a library or library family counts as approval to use it.
+
 Ask the user to approve the contract and implementation plan. Until the response contains explicit authorization, remain in discussion and do not call the Claude MCP.
 
 ## Delegate implementation
 
-After explicit implementation approval, call `start` with phase `implementation`, persona `implementer`, the exact `approval_quote`, model `opus`, the repository `cwd`, and a self-contained brief. Include the experiment contract, relevant paths, constraints, exact acceptance criteria, and verification commands. State that the full experiment is not authorized.
+After explicit implementation approval, call `start` with phase `implementation`, persona `implementer`, the exact `approval_quote`, model `opus`, the repository `cwd`, and a self-contained brief. Include the experiment contract, requirement ledger, relevant paths, constraints, exact acceptance criteria, library-reuse decisions, and verification commands. State that the full experiment is not authorized. Respect any ownership split the user requested, such as reserving research prose or contract documents for Codex.
 
 Call `poll` with the returned job ID and cursor until it completes. Inspect the actual working tree, generated artifacts, and test output; do not rely only on the implementer's summary.
 
-If implementation deviates from the contract or review finds defects, call `reply` on the same job. Preserve the original contract in the correction message and poll again.
+Use the same implementer job until its work package is complete. If implementation deviates from the contract, leaves required paths as stubs, or review later finds defects, call `reply` on that job with one consolidated correction message. Preserve the original contract and ledger in the correction. Do not start replacement implementers merely because the first pass is incomplete.
+
+Before starting independent review jobs, perform an implementation-completeness check against the ledger. At minimum:
+
+- every contract-required primary path exists and is constructible;
+- no required capability is represented only by `NotImplementedError`, a fail-fast placeholder, or a scripted substitute;
+- a real training step changes the intended trainable parameters in a small or mocked test;
+- checkpoint/resume round-trips the state required by the agreed design;
+- metrics and artifacts are emitted by the real primary path, not only a plumbing smoke path;
+- the relevant test suite and a cheap end-to-end smoke check pass, or environmental validation gaps are named precisely.
+
+Do not call a scaffold, interface layer, or plumbing-only smoke result a completed implementation. Report it as partial and continue the implementer session. Do not let documentation, generic hardening, or additional review activity displace missing core experiment code.
 
 ## Run independent gates
 
 Use fresh sessions so reviewers are not anchored by the implementer's reasoning. Give them the original contract and paths to the actual code and artifacts, not the implementer's self-assessment.
 
-Call `start` with phase `review` for every reviewer. Review jobs do not require `approval_quote`, cannot edit tracked implementation files, and cannot launch the full experiment.
+Call `start` with phase `review` for each selected reviewer. Review jobs do not require `approval_quote`, cannot edit tracked implementation files, and cannot launch the full experiment.
+
+Right-size review to the next decision. Do not fan out reviewers while the implementation-completeness check is failing. For an implementation handoff, one fresh code review is normally sufficient. Add design and measurement audits when preparing an exploratory run; use the full set only for an expensive, conclusion-bearing, or otherwise high-consequence run. An early reviewer is appropriate only for a narrowly identified design risk whose answer will change the implementation, not as a substitute for finishing it.
 
 Before an expensive or conclusion-bearing run, use:
 
@@ -67,7 +84,7 @@ Before an expensive or conclusion-bearing run, use:
 3. `measurement-auditor` to validate metrics, denominators, masks, aggregation, instrumentation, and artifact completeness.
 4. `falsifier` when alternative explanations would materially change the conclusion; ask for the cheapest decisive controls.
 
-Start independent audits concurrently when their scopes do not overlap. Synthesize findings yourself. Ask the implementer to fix every critical issue and resolve or explicitly waive every high-severity issue with the user. Re-run affected audits after fixes.
+Start independent audits concurrently when their scopes do not overlap. Synthesize findings yourself and deduplicate overlapping comments before sending a consolidated fix request. Ask the implementer to fix every critical issue and resolve or explicitly waive every high-severity issue with the user. Re-run only the audits affected by those fixes; do not repeat unchanged gates for reassurance.
 
 ## Approve and execute the run
 
@@ -92,6 +109,7 @@ Report what the experiment rules out, what it does not rule out, anomalies, revi
 ## Tool discipline
 
 - Use one job ID per independent agent and preserve cursors between `poll` calls.
+- Optimize for completed acceptance criteria, not agent turns, reports, or review count. Keep the number of jobs proportional to the decision being made.
 - Treat a job's phase as immutable. Use `reply` only within implementation, review, or interpretation. Start a fresh job for independent review or any execution.
 - Prefer Opus for implementation and all conclusion-bearing audits unless the user requests otherwise.
 - Never call `cancel` without explicit user authorization to terminate that job. Copy the exact authorization into `approval_quote`.

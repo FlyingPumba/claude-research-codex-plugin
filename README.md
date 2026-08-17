@@ -78,6 +78,41 @@ codex plugin marketplace add "$PWD"
 codex plugin add claude-research@claude-research-codex-plugin
 ```
 
+The `marketplace add` command is a one-time registration step. The local marketplace points directly at this checkout, so you do not need to add it again after each edit.
+
+### Reinstall after local changes
+
+If you switched away from a custom Codex build, first confirm that your shell resolves the intended CLI:
+
+```bash
+command -v codex
+codex --version
+```
+
+On an Apple Silicon Homebrew installation, the first command normally reports `/opt/homebrew/bin/codex`. If it still reports an old custom path, run `rehash` in zsh or open a new terminal before continuing.
+
+Then, from the repository root, run:
+
+```bash
+# Give the changed plugin a fresh cache key.
+python3 ~/.codex/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py \
+  plugins/claude-research
+
+# Validate before installing. `uv` supplies the validator's PyYAML dependency.
+uv run --with pyyaml python \
+  ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py \
+  plugins/claude-research
+
+# Reinstall the plugin from the already-registered local marketplace.
+codex plugin add claude-research@claude-research-codex-plugin
+
+# Confirm that Codex sees the plugin and bundled MCP.
+codex plugin list
+codex mcp list
+```
+
+You do not need to remove the previous installation or run `codex plugin marketplace upgrade` for this local-development setup. The cachebuster prevents Codex from reusing the prior installed copy. After reinstalling, start a new Codex conversation so it loads the updated skill and MCP tool definitions.
+
 ## Using it
 
 Start the research discussion with Codex normally:
@@ -114,12 +149,15 @@ The enforced workflow is:
 1. Codex and the researcher discuss and agree on the experiment contract without changing code.
 2. The researcher explicitly approves implementation; the exact approval is attached to a new `implementation` job.
 3. An `implementer` Claude session changes code and runs tests or cheap smoke checks, but cannot launch the full experiment.
-4. Fresh `code-reviewer`, `experiment-auditor`, and `measurement-auditor` jobs gate the run. A `falsifier` adds decisive controls when alternative explanations matter.
-5. The implementer fixes critical findings and affected gates are rerun.
-6. Codex reports the gate status and asks for a separate approval to execute the full experiment.
-7. A fresh `execution` job runs the frozen, audited contract without changing tracked experiment code.
-8. A fresh `results-interpreter` inspects raw outputs, resolved configuration, logs, and summaries.
-9. Codex synthesizes the evidence and bounds the claim.
+4. Codex checks every requirement against the actual tree and cheap semantic tests; scaffolds, stubs, and plumbing-only smoke paths keep the implementation phase open.
+5. Once the primary path is complete, fresh reviewers are added in proportion to the next decision: code review for implementation, design and measurement audits for exploratory runs, and falsification for conclusion-bearing runs where alternatives matter.
+6. The implementer fixes critical findings and only affected gates are rerun.
+7. Codex reports the gate status and asks for a separate approval to execute the full experiment.
+8. A fresh `execution` job runs the frozen, audited contract without changing tracked experiment code.
+9. A fresh `results-interpreter` inspects raw outputs, resolved configuration, logs, and summaries.
+10. Codex synthesizes the evidence and bounds the claim.
+
+Implementation approval remains valid for the agreed work package. Codex should not repeatedly re-litigate or narrate that boundary; it returns to the user only for a materially expanded scope, an unresolved scientific choice, a destructive action, or approval of the consequential run.
 
 Questions, hypotheticals, planning requests, and phrases such as “how would we” are not treated as approval. Repeating a full run requires a new execution approval. Cancelling a running Claude job also requires explicit authorization.
 
@@ -167,7 +205,9 @@ cd plugins/claude-research/mcp
 npm test
 ```
 
-Validate the complete plugin with Codex's `plugin-creator` validator before distributing an update. After pulling an update, refresh the marketplace and reinstall the plugin:
+Validate the complete plugin with Codex's `plugin-creator` validator before distributing an update. For a checkout registered as a local marketplace, use the cachebuster and reinstall procedure in [Reinstall after local changes](#reinstall-after-local-changes).
+
+If instead you installed the marketplace from the private Git repository and are not editing a local checkout, refresh that remote-backed marketplace and reinstall with:
 
 ```bash
 codex plugin marketplace upgrade claude-research-codex-plugin

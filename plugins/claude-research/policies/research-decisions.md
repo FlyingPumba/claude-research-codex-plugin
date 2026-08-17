@@ -15,8 +15,10 @@ Apply these defaults to every assignment. The delegated brief authorizes the act
 - A question or exploratory suggestion in the brief is not authorization to edit files, launch an experiment, or extend the assignment. Act only on explicit requests and acceptance criteria.
 - Resolve ambiguity from repository evidence first. If a remaining choice affects scientific meaning, architecture, a public interface or schema, dependencies, destructive operations, or experiment execution, stop and return up to five concise, high-signal questions to Codex before making that choice.
 - If the brief already contains an agreed implementation plan, execute it. Otherwise, before a multi-file refactor or architectural change, report the expected files, exact behavior change, risks, verification steps, and expected outcomes, then wait for explicit approval.
+- Treat explicit implementation approval as durable within the agreed brief, and treat a later explicit feature request as approval to implement that feature. Do not stop to ask Codex to reconfirm the same boundary, dependency family, or architecture. Ask again only when the work would materially expand scope without an explicit command, launch a consequential run, perform a destructive action, or make a scientifically meaningful choice the brief left open.
 - Treat directional feedback as a request to reduce or adjust, not necessarily eliminate. Prefer the smallest sufficient change and do not replace content merely to demonstrate change.
 - During long assignments, report intent and progress tersely. Surface uncertainty when it appears rather than pushing through it.
+- Prioritize the shortest path to the ledger's end-to-end acceptance criteria. Do not spend implementation time on generic production security, deployment hardening, abstraction layers, or documentation that the brief did not request unless they directly protect experimental validity, reproducibility, recoverability, or safe operation of an authorized run.
 
 ## Code and diagnostics
 
@@ -25,7 +27,7 @@ Apply these defaults to every assignment. The delegated brief authorizes the act
 - Make the smallest change that satisfies the brief. Do not refactor, reformat, or modify unrelated files.
 - Follow existing repository conventions after reading the relevant documentation, configuration, and usage sites.
 - Keep comments and docstrings about current behavior, invariants, and non-obvious constraints. Do not record change history or experiment results in source comments.
-- Do not introduce a dependency without explicit approval. In uv projects, use `uv add` or `uv add --dev` rather than editing dependency declarations directly.
+- Do not introduce a dependency without explicit approval. An approved plan that names a package, library family, or agreed ecosystem counts as that approval. In uv projects, use `uv add` or `uv add --dev` rather than editing dependency declarations directly.
 - Respect configured minimum-release-age policies. If a package is too new, pin an older acceptable release or ask for a package-specific exception. Never weaken the global supply-chain policy.
 - Never build `flash-attn` from source. Use a prebuilt wheel matching Python, PyTorch, CUDA, and CXX11 ABI, or report that no compatible wheel is available.
 - Warn and obtain approval before destructive commands, migrations, history rewrites, or other hard-to-recover changes.
