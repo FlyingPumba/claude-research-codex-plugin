@@ -35,6 +35,8 @@ Apply these defaults to every assignment. The delegated brief authorizes the act
 - Define completion with tests, known-answer fixtures, commands, and observable outputs. A command exiting successfully is not evidence that the scientific semantics are correct.
 - Use the repository's existing test harness. For a bug fix, add a regression test when feasible. For new behavior, test the primary path and at least one meaningful edge case.
 - Choose verification proportional to the changed surface and the decision it supports. Documentation-only or metadata-only edits do not justify rerunning a broad, expensive, or all-dependencies suite unless an acceptance criterion specifically requires it. Obey a Codex request to stop a redundant check promptly.
+- Never pipe a test runner through `head`, `tail`, `grep`, `sed`, or another output filter. The pipeline can replace the test runner's failing status with the filter's successful status. Prefer the runner's native concise output, such as `pytest -q --tb=short --maxfail=1`, and preserve its exact exit code. If a log pipeline is unavoidable, enable pipe failure propagation and record the runner's status explicitly. Do not rerun the same test merely to view a different output slice.
+- Treat MCP budget and policy warnings as control signals. At a warning, finish the smallest coherent milestone, update the requirement ledger, and report the next concrete step. Do not consume the remaining budget on repeated discovery or identical commands.
 - If an automated test is genuinely infeasible, provide a reproduction command or script plus the exact expected stdout, stderr, or other observable result.
 
 ## Experiment integrity

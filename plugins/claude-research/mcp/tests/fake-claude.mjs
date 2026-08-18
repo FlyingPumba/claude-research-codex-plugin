@@ -13,6 +13,8 @@ const prompt = valueAfter("-p") || "";
 const resumed = args.includes("--resume");
 const longTextLength = Number.parseInt(process.env.FAKE_CLAUDE_LONG_TEXT_LENGTH || "0", 10);
 const delayMs = Number.parseInt(process.env.FAKE_CLAUDE_DELAY_MS || "0", 10);
+const toolCommand = process.env.FAKE_CLAUDE_TOOL_COMMAND || "pytest -q";
+const toolRepeats = Number.parseInt(process.env.FAKE_CLAUDE_TOOL_REPEATS || "1", 10);
 const assistantText = longTextLength > 0
   ? "A".repeat(longTextLength)
   : resumed ? "Applied review feedback." : "Implemented the experiment.";
@@ -23,7 +25,14 @@ const resultText = longTextLength > 0
 if (process.env.FAKE_CLAUDE_LOG) {
   appendFileSync(
     process.env.FAKE_CLAUDE_LOG,
-    `${JSON.stringify({ args, sessionId, prompt, resumed, cwd: process.cwd() })}\n`,
+    `${JSON.stringify({
+      args,
+      sessionId,
+      prompt,
+      resumed,
+      cwd: process.cwd(),
+      globalAppendSystemPrompt: process.env.CLAUDE_APPEND_SYSTEM_PROMPT ?? null,
+    })}\n`,
   );
 }
 
@@ -55,7 +64,12 @@ console.log(
     message: {
       content: [
         { type: "text", text: assistantText },
-        { type: "tool_use", name: "Bash", input: { command: "pytest -q" } },
+        ...Array.from({ length: toolRepeats }, (_, index) => ({
+          type: "tool_use",
+          id: `tool-${index}`,
+          name: "Bash",
+          input: { command: toolCommand },
+        })),
       ],
     },
   }),

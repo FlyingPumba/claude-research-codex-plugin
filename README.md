@@ -27,6 +27,9 @@ Everything runs locally. The bundled MCP process launches the installed `claude`
 - A shared policy layer containing the researcher's standing implementation and experiment-operation decisions.
 - Explicit regression, primary-path, edge-case, known-answer, and smoke-test expectations.
 - Continued implementation sessions for review feedback and fixes.
+- Durable work-package records that survive MCP restarts and preserve the Claude session ID, brief, events, budgets, and requirement-ledger handoff.
+- Required project-specific working directories and one canonical implementer session per work package.
+- Per-turn wall-time and tool-call budgets, repeated-command detection, and warnings for test pipelines that can mask failures.
 - Full Codex authority over delegated Claude workers, including cancellation, redirection, restart, and continuation without separate approval.
 - Fresh, independent Claude sessions for audits where anchoring would be dangerous.
 - Six research-oriented personas:
@@ -140,8 +143,8 @@ The enforced workflow is:
 
 1. Codex and the researcher discuss and agree on the experiment contract without changing code.
 2. The researcher explicitly approves implementation; the exact approval is attached to a new `implementation` job.
-3. An `implementer` Claude session changes code and runs tests or cheap smoke checks, but cannot launch the full experiment.
-4. Codex checks every requirement against the actual tree and cheap semantic tests; scaffolds, stubs, and plumbing-only smoke paths keep the implementation phase open.
+3. An `implementer` Claude session changes code and runs tests or cheap smoke checks, but cannot launch the full experiment. Subsequent milestones and corrections resume that same native Claude session.
+4. Codex makes targeted spot-checks of the actual tree, diffs, artifacts, job records, and cheap semantic tests where they reduce uncertainty; scaffolds, stubs, and plumbing-only smoke paths keep the implementation phase open.
 5. Once the primary path is complete, fresh reviewers are added in proportion to the next decision: code review for implementation, design and measurement audits for exploratory runs, and falsification for conclusion-bearing runs where alternatives matter.
 6. The implementer fixes critical findings and only affected gates are rerun.
 7. Codex reports the gate status and asks for a separate approval to execute the full experiment.
@@ -159,10 +162,10 @@ Questions, hypotheticals, planning requests, and phrases such as “how would we
 
 | Tool | Purpose |
 | --- | --- |
-| `start` | Start an immutable `implementation`, `review`, `execution`, or `interpretation` phase. Implementation and execution require an exact user approval quote. |
+| `start` | Start an immutable `implementation`, `review`, `execution`, or `interpretation` phase with a required precise `cwd` and stable `work_package_id`. Implementation and execution require an exact user approval quote. |
 | `poll` | Stream new events from an asynchronous job until it reaches a terminal state. |
-| `reply` | Continue an implementation, review, or interpretation session. It cannot repeat or extend an execution job. |
-| `list` | List jobs known to the current local MCP process. |
+| `reply` | Resume the same persisted Claude Code session for implementation, review, or interpretation. It cannot repeat or extend an execution job. |
+| `list` | List durable jobs loaded from disk, including sessions recoverable after an MCP restart. |
 | `cancel` | Let Codex stop any running Claude worker immediately, recording an optional reason but requiring no separate user approval. |
 | `personas` | List the available persona definitions. |
 
@@ -172,7 +175,18 @@ The default model is `opus` with `high` effort. Override these defaults with:
 export CLAUDE_RESEARCH_MODEL=opus
 export CLAUDE_RESEARCH_EFFORT=high
 export CLAUDE_RESEARCH_CLAUDE_BIN=/path/to/claude
+export CLAUDE_RESEARCH_MAX_WALL_TIME_MINUTES=60
+export CLAUDE_RESEARCH_MAX_TOOL_CALLS=200
+export CLAUDE_RESEARCH_STATE_DIR=/path/to/local/job-state
 ```
+
+Each `start` creates a fresh native Claude Code session. Each `reply` launches a new CLI process with `--resume` and the original session ID, so implementation corrections retain the complete Claude transcript. The MCP stores atomic JSON job metadata plus append-only JSONL event logs under `~/.codex/claude-research/jobs` by default. If the MCP restarts, `list` reloads those records and `reply` continues the saved session. Starting a second implementer for the same `cwd` and `work_package_id` is rejected unless Codex explicitly names the previous job with `replace_job_id` and records why its native session is unrecoverable.
+
+Budgets apply to each `start` or `reply` turn. The MCP emits a warning at 80% of the tool-call allowance and cancels after the configured tool-call or wall-time limit. It also emits policy warnings after three identical shell commands and when a test runner is piped through `head`, `tail`, `grep`, or `sed`, because those pipelines can hide the test runner's failing exit status.
+
+Plugin-launched Claude workers do not inherit the shell's `CLAUDE_APPEND_SYSTEM_PROMPT` by default. The plugin supplies its own research policy and persona, avoiding conflicts with confirmation or process-control rules intended for personal interactive Claude use. Set `CLAUDE_RESEARCH_INHERIT_GLOBAL_PROMPT=1` only when inheriting that global prompt is deliberately desired.
+
+The MCP exposes the exact plugin build version and a SHA-256 hash of the loaded persona/policy bundle in initialization and tool responses. This lets Codex detect a stale skill/server installation rather than silently using mismatched semantics.
 
 ## Security model
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -13,13 +13,14 @@ const MCP_ENTRY = join(MCP_DIR, "index.mjs");
 const FAKE_CLAUDE = join(TESTS_DIR, "fake-claude.mjs");
 
 class McpClient {
-  constructor(env) {
+  constructor(env = {}) {
     this.nextId = 1;
     this.pending = new Map();
     this.stderr = "";
+    this.stateDir = env.CLAUDE_RESEARCH_STATE_DIR || mkdtempSync(join(tmpdir(), "claude-research-state-"));
     this.process = spawn(process.execPath, [MCP_ENTRY], {
       cwd: resolve(MCP_DIR, ".."),
-      env: { ...process.env, ...env },
+      env: { ...process.env, ...env, CLAUDE_RESEARCH_STATE_DIR: this.stateDir },
       stdio: ["pipe", "pipe", "pipe"],
     });
     createInterface({ input: this.process.stdout }).on("line", (line) => {
@@ -70,7 +71,10 @@ class McpClient {
   }
 
   close() {
+    if (this.process.exitCode !== null) return Promise.resolve();
+    const exited = new Promise((resolveExit) => this.process.once("exit", resolveExit));
     this.process.kill("SIGTERM");
+    return exited;
   }
 }
 
@@ -104,6 +108,7 @@ test("advertises the local research contract and personas", async (t) => {
 
   const init = await client.initialize();
   assert.equal(init.serverInfo.name, "claude-research");
+  assert.match(init.serverInfo.version, /^0\.1\.0\+codex\./);
   assert.match(init.instructions, /trustworthy research/i);
 
   const tools = (await client.request("tools/list")).result.tools;
@@ -114,7 +119,7 @@ test("advertises the local research contract and personas", async (t) => {
   const startTool = tools.find((tool) => tool.name === "start");
   const pollTool = tools.find((tool) => tool.name === "poll");
   const cancelTool = tools.find((tool) => tool.name === "cancel");
-  assert.deepEqual(startTool.inputSchema.required, ["brief", "phase"]);
+  assert.deepEqual(startTool.inputSchema.required, ["brief", "phase", "cwd", "work_package_id"]);
   assert.equal(pollTool.inputSchema.properties.wait_ms.maximum, 60_000);
   assert.match(pollTool.description, /60000/);
   assert.deepEqual(cancelTool.inputSchema.required, ["job_id"]);
@@ -140,12 +145,14 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
   const client = new McpClient({
     CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
     FAKE_CLAUDE_LOG: logPath,
+    CLAUDE_APPEND_SYSTEM_PROMPT: "Always stop and ask before doing anything.",
   });
   t.after(() => client.close());
   await client.initialize();
 
   const started = await client.call("start", {
     cwd: temp,
+    work_package_id: "synthetic-implementation",
     persona: "implementer",
     phase: "implementation",
     approval_quote: "I approve this contract and its implementation.",
@@ -154,6 +161,9 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
   assert.equal(started.isError, undefined);
   assert.equal(started.structuredContent.model, "opus");
   assert.equal(started.structuredContent.phase, "implementation");
+  assert.equal(started.structuredContent.work_package_id, "synthetic-implementation");
+  assert.match(started.structuredContent.runtime.plugin_version, /^0\.1\.0\+codex\./);
+  assert.equal(existsSync(started.structuredContent.state_file), true);
   assert.equal(
     started.structuredContent.approval_quote,
     "I approve this contract and its implementation.",
@@ -185,6 +195,7 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
     .split("\n")
     .map((line) => JSON.parse(line));
   assert.equal(invocations.length, 2);
+  assert.equal(invocations[0].globalAppendSystemPrompt, null);
   assert.ok(invocations[0].args.includes("--dangerously-skip-permissions"));
   assert.equal(invocations[0].args[invocations[0].args.indexOf("--model") + 1], "opus");
   assert.equal(invocations[0].args[invocations[0].args.indexOf("--effort") + 1], "high");
@@ -228,6 +239,7 @@ test("preserves long Claude evidence without truncation", async (t) => {
 
   const started = await client.call("start", {
     cwd: temp,
+    work_package_id: "long-evidence",
     persona: "implementer",
     phase: "implementation",
     approval_quote: "Implement the agreed diagnostic.",
@@ -242,6 +254,126 @@ test("preserves long Claude evidence without truncation", async (t) => {
   assert.doesNotMatch(completed.snapshot.last_result.result, /truncated/);
 });
 
+test("enforces one canonical implementer per work package unless replacement is explicit", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
+  const client = new McpClient({
+    CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
+    FAKE_CLAUDE_LOG: join(temp, "claude.jsonl"),
+  });
+  t.after(() => client.close());
+  await client.initialize();
+
+  const first = await client.call("start", {
+    cwd: temp,
+    work_package_id: "one-implementer",
+    persona: "implementer",
+    phase: "implementation",
+    approval_quote: "Implement this work package.",
+    brief: "Implement the first milestone.",
+  });
+  await pollUntilTerminal(client, first.structuredContent.job_id);
+
+  const accidental = await client.call("start", {
+    cwd: temp,
+    work_package_id: "one-implementer",
+    persona: "implementer",
+    phase: "implementation",
+    approval_quote: "Implement this work package.",
+    brief: "Start over from scratch.",
+  });
+  assert.equal(accidental.isError, true);
+  assert.match(accidental.content[0].text, /use reply on that job/i);
+
+  const replacement = await client.call("start", {
+    cwd: temp,
+    work_package_id: "one-implementer",
+    persona: "implementer",
+    phase: "implementation",
+    approval_quote: "Implement this work package.",
+    brief: "Recover from an unavailable native Claude transcript.",
+    replace_job_id: first.structuredContent.job_id,
+    replacement_reason: "The native Claude session cannot be resumed.",
+  });
+  assert.equal(replacement.isError, undefined);
+  assert.equal(replacement.structuredContent.replacement_for, first.structuredContent.job_id);
+  await pollUntilTerminal(client, replacement.structuredContent.job_id);
+});
+
+test("reloads durable jobs after an MCP restart and resumes the same Claude session", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
+  const stateDir = join(temp, "state");
+  const logPath = join(temp, "claude.jsonl");
+  const env = {
+    CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
+    CLAUDE_RESEARCH_STATE_DIR: stateDir,
+    FAKE_CLAUDE_LOG: logPath,
+  };
+  const firstClient = new McpClient(env);
+  await firstClient.initialize();
+  const started = await firstClient.call("start", {
+    cwd: temp,
+    work_package_id: "durable-session",
+    persona: "implementer",
+    phase: "implementation",
+    approval_quote: "Implement the durable work package.",
+    brief: "Complete one milestone and persist the job.",
+  });
+  await pollUntilTerminal(firstClient, started.structuredContent.job_id);
+  await firstClient.close();
+
+  const secondClient = new McpClient(env);
+  t.after(() => secondClient.close());
+  await secondClient.initialize();
+  const listed = await secondClient.call("list");
+  assert.ok(listed.structuredContent.jobs.some((job) => job.job_id === started.structuredContent.job_id));
+
+  const replied = await secondClient.call("reply", {
+    job_id: started.structuredContent.job_id,
+    message: "Continue with the next milestone from the durable ledger.",
+  });
+  const completed = await pollUntilTerminal(
+    secondClient,
+    started.structuredContent.job_id,
+    replied.structuredContent.next_cursor,
+  );
+  assert.equal(completed.snapshot.session_id, started.structuredContent.session_id);
+
+  const invocations = readFileSync(logPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(invocations[1].resumed, true);
+  assert.equal(invocations[1].sessionId, invocations[0].sessionId);
+});
+
+test("warns about masked test failures, repeated commands, and excessive tool loops", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
+  const client = new McpClient({
+    CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
+    FAKE_CLAUDE_LOG: join(temp, "claude.jsonl"),
+    FAKE_CLAUDE_TOOL_COMMAND: "pytest -q | tail -20",
+    FAKE_CLAUDE_TOOL_REPEATS: "11",
+  });
+  t.after(() => client.close());
+  await client.initialize();
+
+  const started = await client.call("start", {
+    cwd: temp,
+    work_package_id: "test-discipline",
+    persona: "implementer",
+    phase: "implementation",
+    approval_quote: "Implement the test-discipline fixture.",
+    brief: "Exercise diagnostic guardrails.",
+    max_tool_calls: 10,
+  });
+  const terminal = await pollUntilTerminal(client, started.structuredContent.job_id);
+  assert.ok(terminal.events.some((event) => event.policy === "masked_test_exit_status"));
+  assert.ok(terminal.events.some((event) => event.policy === "repeated_command"));
+  assert.ok(terminal.events.some((event) => event.kind === "budget_warning"));
+  assert.ok(terminal.events.some((event) => event.kind === "budget_cancel_requested"));
+  assert.equal(terminal.snapshot.status, "cancelled");
+});
+
 test("rejects an unknown persona without launching Claude", async (t) => {
   const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
   const client = new McpClient({
@@ -253,6 +385,7 @@ test("rejects an unknown persona without launching Claude", async (t) => {
 
   const result = await client.call("start", {
     cwd: temp,
+    work_package_id: "unknown-persona",
     persona: "agreeable-helper",
     phase: "review",
     brief: "Do something vague.",
@@ -272,6 +405,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
 
   const missingPhase = await client.call("start", {
     cwd: temp,
+    work_package_id: "phase-boundaries",
     persona: "implementer",
     brief: "Implement the contract.",
   });
@@ -280,6 +414,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
 
   const missingImplementationApproval = await client.call("start", {
     cwd: temp,
+    work_package_id: "phase-boundaries",
     persona: "implementer",
     phase: "implementation",
     brief: "Implement the contract.",
@@ -289,6 +424,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
 
   const wrongPersona = await client.call("start", {
     cwd: temp,
+    work_package_id: "phase-boundaries",
     persona: "code-reviewer",
     phase: "implementation",
     approval_quote: "Implement the contract.",
@@ -299,6 +435,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
 
   const review = await client.call("start", {
     cwd: temp,
+    work_package_id: "phase-boundaries",
     persona: "code-reviewer",
     phase: "review",
     brief: "Independently inspect the implementation against the frozen contract.",
@@ -310,6 +447,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
 
   const missingExecutionApproval = await client.call("start", {
     cwd: temp,
+    work_package_id: "phase-boundaries",
     persona: "implementer",
     phase: "execution",
     brief: "Run the frozen, audited experiment.",
@@ -319,6 +457,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
 
   const execution = await client.call("start", {
     cwd: temp,
+    work_package_id: "phase-boundaries",
     persona: "implementer",
     phase: "execution",
     approval_quote: "Launch the frozen experiment now.",
@@ -348,6 +487,7 @@ test("lets Codex cancel a running Claude without separate user approval", async 
 
   const started = await client.call("start", {
     cwd: temp,
+    work_package_id: "cancel-worker",
     persona: "implementer",
     phase: "implementation",
     approval_quote: "Implement the agreed contract.",
