@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -11,6 +11,10 @@ const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 const MCP_DIR = resolve(TESTS_DIR, "..");
 const MCP_ENTRY = join(MCP_DIR, "index.mjs");
 const FAKE_CLAUDE = join(TESTS_DIR, "fake-claude.mjs");
+const PLUGIN_DIR = resolve(MCP_DIR, "..");
+const SKILL_PATH = join(PLUGIN_DIR, "skills", "delegate-to-claude", "SKILL.md");
+const README_PATH = resolve(PLUGIN_DIR, "..", "..", "README.md");
+const DELEGATION_APPROVAL_QUOTE = "Use $delegate-to-claude for this research workflow.";
 
 class McpClient {
   constructor(env = {}) {
@@ -119,7 +123,15 @@ test("advertises the local research contract and personas", async (t) => {
   const startTool = tools.find((tool) => tool.name === "start");
   const pollTool = tools.find((tool) => tool.name === "poll");
   const cancelTool = tools.find((tool) => tool.name === "cancel");
-  assert.deepEqual(startTool.inputSchema.required, ["brief", "phase", "cwd", "work_package_id"]);
+  assert.deepEqual(startTool.inputSchema.required, [
+    "brief",
+    "phase",
+    "cwd",
+    "work_package_id",
+    "delegation_approval_quote",
+  ]);
+  assert.match(startTool.description, /never call this because the user merely asked Codex to implement/i);
+  assert.match(startTool.inputSchema.properties.delegation_approval_quote.description, /affirmative user request/i);
   assert.equal(pollTool.inputSchema.properties.wait_ms.maximum, 60_000);
   assert.match(pollTool.description, /60000/);
   assert.deepEqual(cancelTool.inputSchema.required, ["job_id"]);
@@ -139,6 +151,17 @@ test("advertises the local research contract and personas", async (t) => {
   );
 });
 
+test("documents Claude delegation as explicit opt-in rather than an implementation default", () => {
+  const skill = readFileSync(SKILL_PATH, "utf8");
+  const readme = readFileSync(README_PATH, "utf8");
+
+  assert.match(skill, /only when the user explicitly asks to use Claude/);
+  assert.match(skill, /Never infer Claude delegation from a request to implement, test, review, run, or interpret research/);
+  assert.match(skill, /implementation or experiment approval alone is not delegation approval/i);
+  assert.match(readme, /Claude delegation and implementation approval are distinct/);
+  assert.match(readme, /“Implement this,” “add tests,” “review this,”/);
+});
+
 test("starts, polls, and resumes the same dangerous local Claude session", async (t) => {
   const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
   const logPath = join(temp, "claude.jsonl");
@@ -155,6 +178,7 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
     work_package_id: "synthetic-implementation",
     persona: "implementer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "I approve this contract and its implementation.",
     brief: "Implement a seeded synthetic experiment and persist raw measurements.",
   });
@@ -168,6 +192,7 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
     started.structuredContent.approval_quote,
     "I approve this contract and its implementation.",
   );
+  assert.equal(started.structuredContent.delegation_approval_quote, DELEGATION_APPROVAL_QUOTE);
   const jobId = started.structuredContent.job_id;
 
   const first = await pollUntilTerminal(client, jobId);
@@ -200,6 +225,7 @@ test("starts, polls, and resumes the same dangerous local Claude session", async
   assert.equal(invocations[0].args[invocations[0].args.indexOf("--model") + 1], "opus");
   assert.equal(invocations[0].args[invocations[0].args.indexOf("--effort") + 1], "high");
   assert.match(invocations[0].prompt, /WORKFLOW PHASE: implementation/);
+  assert.match(invocations[0].prompt, /CLAUDE DELEGATION APPROVAL: Use \$delegate-to-claude/);
   assert.match(invocations[0].prompt, /I approve this contract and its implementation\./);
   assert.match(invocations[0].prompt, /FORBIDDEN: launch the full, expensive/);
   assert.match(
@@ -242,6 +268,7 @@ test("preserves long Claude evidence without truncation", async (t) => {
     work_package_id: "long-evidence",
     persona: "implementer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "Implement the agreed diagnostic.",
     brief: "Return complete diagnostic evidence.",
   });
@@ -268,6 +295,7 @@ test("enforces one canonical implementer per work package unless replacement is 
     work_package_id: "one-implementer",
     persona: "implementer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "Implement this work package.",
     brief: "Implement the first milestone.",
   });
@@ -278,6 +306,7 @@ test("enforces one canonical implementer per work package unless replacement is 
     work_package_id: "one-implementer",
     persona: "implementer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "Implement this work package.",
     brief: "Start over from scratch.",
   });
@@ -289,6 +318,7 @@ test("enforces one canonical implementer per work package unless replacement is 
     work_package_id: "one-implementer",
     persona: "implementer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "Implement this work package.",
     brief: "Recover from an unavailable native Claude transcript.",
     replace_job_id: first.structuredContent.job_id,
@@ -315,6 +345,7 @@ test("reloads durable jobs after an MCP restart and resumes the same Claude sess
     work_package_id: "durable-session",
     persona: "implementer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "Implement the durable work package.",
     brief: "Complete one milestone and persist the job.",
   });
@@ -346,6 +377,47 @@ test("reloads durable jobs after an MCP restart and resumes the same Claude sess
   assert.equal(invocations[1].sessionId, invocations[0].sessionId);
 });
 
+test("refuses to resume a persisted job that predates explicit Claude opt-in", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
+  const stateDir = join(temp, "state");
+  const legacyJobId = "00000000-0000-4000-8000-000000000000";
+  mkdirSync(stateDir);
+  writeFileSync(
+    join(stateDir, `${legacyJobId}.json`),
+    `${JSON.stringify({
+      id: legacyJobId,
+      sessionId: legacyJobId,
+      cwd: temp,
+      workPackageId: "legacy-without-delegation-opt-in",
+      persona: "implementer",
+      phase: "implementation",
+      approvalQuote: "Implement this.",
+      status: "completed",
+      turn: 1,
+      nextSeq: 0,
+      createdAt: "2026-08-20T00:00:00.000Z",
+      updatedAt: "2026-08-20T00:00:00.000Z",
+      brief: "Legacy job fixture.",
+    })}\n`,
+  );
+
+  const client = new McpClient({
+    CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
+    CLAUDE_RESEARCH_STATE_DIR: stateDir,
+    FAKE_CLAUDE_LOG: join(temp, "claude.jsonl"),
+  });
+  t.after(() => client.close());
+  await client.initialize();
+
+  const reply = await client.call("reply", {
+    job_id: legacyJobId,
+    message: "Continue implementing.",
+  });
+  assert.equal(reply.isError, true);
+  assert.match(reply.content[0].text, /predates the explicit Claude-delegation approval gate/);
+  assert.equal(existsSync(join(temp, "claude.jsonl")), false);
+});
+
 test("warns about masked test failures, repeated commands, and excessive tool loops", async (t) => {
   const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
   const client = new McpClient({
@@ -362,6 +434,7 @@ test("warns about masked test failures, repeated commands, and excessive tool lo
     work_package_id: "test-discipline",
     persona: "implementer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "Implement the test-discipline fixture.",
     brief: "Exercise diagnostic guardrails.",
     max_tool_calls: 10,
@@ -394,6 +467,55 @@ test("rejects an unknown persona without launching Claude", async (t) => {
   assert.match(result.content[0].text, /Unknown persona/);
 });
 
+test("does not treat implementation approval as permission to delegate to Claude", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
+  const logPath = join(temp, "claude.jsonl");
+  const client = new McpClient({
+    CLAUDE_RESEARCH_CLAUDE_BIN: FAKE_CLAUDE,
+    FAKE_CLAUDE_LOG: logPath,
+  });
+  t.after(() => client.close());
+  await client.initialize();
+
+  const missingDelegationApproval = await client.call("start", {
+    cwd: temp,
+    work_package_id: "no-silent-delegation",
+    persona: "implementer",
+    phase: "implementation",
+    approval_quote: "Ok, great, let's implement this, and add tests for it!",
+    brief: "Implement the agreed experiment changes.",
+  });
+  assert.equal(missingDelegationApproval.isError, true);
+  assert.match(missingDelegationApproval.content[0].text, /delegation_approval_quote is required/);
+  assert.equal(existsSync(logPath), false);
+
+  const vagueDelegationApproval = await client.call("start", {
+    cwd: temp,
+    work_package_id: "no-silent-delegation",
+    persona: "implementer",
+    phase: "implementation",
+    delegation_approval_quote: "Please hand this off.",
+    approval_quote: "Ok, great, let's implement this, and add tests for it!",
+    brief: "Implement the agreed experiment changes.",
+  });
+  assert.equal(vagueDelegationApproval.isError, true);
+  assert.match(vagueDelegationApproval.content[0].text, /must be an affirmative user request/);
+  assert.equal(existsSync(logPath), false);
+
+  const explicitRefusal = await client.call("start", {
+    cwd: temp,
+    work_package_id: "no-silent-delegation",
+    persona: "implementer",
+    phase: "implementation",
+    delegation_approval_quote: "I never asked for Claude-based development.",
+    approval_quote: "Ok, great, let's implement this, and add tests for it!",
+    brief: "Implement the agreed experiment changes.",
+  });
+  assert.equal(explicitRefusal.isError, true);
+  assert.match(explicitRefusal.content[0].text, /refusals/);
+  assert.equal(existsSync(logPath), false);
+});
+
 test("enforces phase, persona, and separate approval boundaries", async (t) => {
   const temp = mkdtempSync(join(tmpdir(), "claude-research-test-"));
   const client = new McpClient({
@@ -417,6 +539,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
     work_package_id: "phase-boundaries",
     persona: "implementer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     brief: "Implement the contract.",
   });
   assert.equal(missingImplementationApproval.isError, true);
@@ -427,6 +550,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
     work_package_id: "phase-boundaries",
     persona: "code-reviewer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "Implement the contract.",
     brief: "Implement the contract.",
   });
@@ -438,18 +562,21 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
     work_package_id: "phase-boundaries",
     persona: "code-reviewer",
     phase: "review",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     brief: "Independently inspect the implementation against the frozen contract.",
   });
   assert.equal(review.isError, undefined);
   const completedReview = await pollUntilTerminal(client, review.structuredContent.job_id);
   assert.equal(completedReview.snapshot.phase, "review");
   assert.equal(completedReview.snapshot.approval_quote, null);
+  assert.equal(completedReview.snapshot.delegation_approval_quote, DELEGATION_APPROVAL_QUOTE);
 
   const missingExecutionApproval = await client.call("start", {
     cwd: temp,
     work_package_id: "phase-boundaries",
     persona: "implementer",
     phase: "execution",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     brief: "Run the frozen, audited experiment.",
   });
   assert.equal(missingExecutionApproval.isError, true);
@@ -460,6 +587,7 @@ test("enforces phase, persona, and separate approval boundaries", async (t) => {
     work_package_id: "phase-boundaries",
     persona: "implementer",
     phase: "execution",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "Launch the frozen experiment now.",
     brief: "Run the frozen, audited experiment without changing tracked code.",
   });
@@ -490,6 +618,7 @@ test("lets Codex cancel a running Claude without separate user approval", async 
     work_package_id: "cancel-worker",
     persona: "implementer",
     phase: "implementation",
+    delegation_approval_quote: DELEGATION_APPROVAL_QUOTE,
     approval_quote: "Implement the agreed contract.",
     brief: "Implement a deliberately slow test fixture.",
   });

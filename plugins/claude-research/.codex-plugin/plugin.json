@@ -1,7 +1,7 @@
 {
   "name": "claude-research",
-  "version": "0.1.0+codex.20260818111535",
-  "description": "Discuss AI-safety research with Codex, then explicitly approve local Claude implementation, independent audits, experiment execution, and interpretation.",
+  "version": "0.1.0+codex.20260820062714",
+  "description": "Discuss AI-safety research with Codex; local Claude work runs only after explicit user opt-in to Claude delegation and separate phase approval.",
   "author": {
     "name": "Ivan Arcuschin"
   },
@@ -15,8 +15,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Claude Research",
-    "shortDescription": "Codex discusses; approved Opus agents implement and audit",
-    "longDescription": "Use Codex as the research interlocutor while explicitly approved local Claude Code agents implement code, independently review bugs and research validity, run frozen experiments after separate approval, falsify explanations, and interpret results.",
+    "shortDescription": "Codex works directly unless Claude delegation is explicit",
+    "longDescription": "Use Codex as the research interlocutor and default worker. Only when the user explicitly opts into Claude delegation may local Claude Code agents implement code, independently review bugs and research validity, run frozen experiments after separate approval, falsify explanations, or interpret results.",
     "developerName": "Ivan Arcuschin",
     "category": "Developer Tools",
     "capabilities": [

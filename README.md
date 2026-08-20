@@ -22,7 +22,7 @@ Everything runs locally. The bundled MCP process launches the installed `claude`
 ## What it provides
 
 - A Codex skill for implementing and iterating on an agreed research experiment.
-- A discussion-first state machine with separate implementation and experiment-execution approvals.
+- An opt-in delegation gate plus separate implementation and experiment-execution approvals.
 - An asynchronous local MCP wrapper around Claude Code.
 - A shared policy layer containing the researcher's standing implementation and experiment-operation decisions.
 - Explicit regression, primary-path, edge-case, known-answer, and smoke-test expectations.
@@ -118,7 +118,11 @@ Do not invoke the skill during ordinary research discussion or planning. When th
 
 > Use $delegate-to-claude to implement the experiment we agreed above.
 
-The skill is scoped to implementing and iterating on research experiments. It does not apply to maintaining this plugin or to other non-experiment software work. It will not launch the full experiment until the separate execution-approval boundary is crossed.
+The skill is scoped to implementing and iterating on research experiments, but it is never selected merely because an experiment needs implementation, tests, review, execution, or interpretation. The user must explicitly ask to use Claude, `$delegate-to-claude`, or the `claude-research` plugin in the current conversation. It does not apply to maintaining this plugin or to other non-experiment software work. It will not launch the full experiment until the separate execution-approval boundary is crossed.
+
+Claude delegation and implementation approval are distinct. “Implement this,” “add tests,” “review this,” or approval of an experiment plan tells Codex what work to do; it does not authorize handing that work to Claude. A single instruction can cross both gates only when it explicitly does both, for example:
+
+> Use $delegate-to-claude to implement the agreed experiment.
 
 Before implementation, agree on:
 
@@ -142,15 +146,16 @@ Example prompts:
 The enforced workflow is:
 
 1. Codex and the researcher discuss and agree on the experiment contract without changing code.
-2. The researcher explicitly approves implementation; the exact approval is attached to a new `implementation` job.
-3. An `implementer` Claude session changes code and runs tests or cheap smoke checks, but cannot launch the full experiment. Subsequent milestones and corrections resume that same native Claude session.
-4. Codex makes targeted spot-checks of the actual tree, diffs, artifacts, job records, and cheap semantic tests where they reduce uncertainty; scaffolds, stubs, and plumbing-only smoke paths keep the implementation phase open.
-5. Once the primary path is complete, fresh reviewers are added in proportion to the next decision: code review for implementation, design and measurement audits for exploratory runs, and falsification for conclusion-bearing runs where alternatives matter.
-6. The implementer fixes critical findings and only affected gates are rerun.
-7. Codex reports the gate status and asks for a separate approval to execute the full experiment.
-8. A fresh `execution` job runs the frozen, audited contract without changing tracked experiment code.
-9. A fresh `results-interpreter` inspects raw outputs, resolved configuration, logs, and summaries.
-10. Codex synthesizes the evidence and bounds the claim.
+2. The researcher explicitly opts into Claude delegation; the exact opt-in is recorded as `delegation_approval_quote` on every new Claude job.
+3. The researcher explicitly approves implementation; the exact phase approval is recorded separately as `approval_quote` on the `implementation` job. One quote may fill both fields only when it explicitly authorizes both actions.
+4. An `implementer` Claude session changes code and runs tests or cheap smoke checks, but cannot launch the full experiment. Subsequent milestones and corrections resume that same native Claude session.
+5. Codex makes targeted spot-checks of the actual tree, diffs, artifacts, job records, and cheap semantic tests where they reduce uncertainty; scaffolds, stubs, and plumbing-only smoke paths keep the implementation phase open.
+6. Once the primary path is complete, fresh reviewers are added in proportion to the next decision and only when the user's delegation scope covers them.
+7. The implementer fixes critical findings and only affected gates are rerun.
+8. Codex reports the gate status and asks for a separate approval to execute the full experiment.
+9. A fresh `execution` job runs the frozen, audited contract without changing tracked experiment code.
+10. A fresh `results-interpreter` inspects raw outputs, resolved configuration, logs, and summaries when Claude interpretation was explicitly requested.
+11. Codex synthesizes the evidence and bounds the claim.
 
 Implementation approval remains valid for the agreed work package. Codex should not repeatedly re-litigate or narrate that boundary; it returns to the user only for a materially expanded scope, an unresolved scientific choice, a destructive action, or approval of the consequential run.
 
@@ -162,7 +167,7 @@ Questions, hypotheticals, planning requests, and phrases such as “how would we
 
 | Tool | Purpose |
 | --- | --- |
-| `start` | Start an immutable `implementation`, `review`, `execution`, or `interpretation` phase with a required precise `cwd` and stable `work_package_id`. Implementation and execution require an exact user approval quote. |
+| `start` | Start an immutable `implementation`, `review`, `execution`, or `interpretation` phase with a required precise `cwd`, stable `work_package_id`, and exact `delegation_approval_quote` explicitly naming Claude or this plugin. Implementation and execution also require a distinct phase `approval_quote`. |
 | `poll` | Stream new events from an asynchronous job until it reaches a terminal state. |
 | `reply` | Resume the same persisted Claude Code session for implementation, review, or interpretation. It cannot repeat or extend an execution job. |
 | `list` | List durable jobs loaded from disk, including sessions recoverable after an MCP restart. |
@@ -198,7 +203,7 @@ This plugin is intentionally configured for trusted local machines and disposabl
 
 Claude can therefore read, modify, execute, and delete files accessible to the current user. Install this plugin only if that is the behavior you want, review the source first, and do not use it in an untrusted checkout or on a machine where those permissions are inappropriate.
 
-The approval quote is an auditable workflow guardrail for starting implementation and execution phases, not cryptographic authorization or a sandbox boundary. Codex is instructed not to infer or fabricate it, and the MCP refuses those phase-transition calls when it is absent. Once a Claude is delegated, Codex controls that worker's lifecycle; both agents still run in the deliberately permissive local environment described above.
+The delegation and phase approval quotes are auditable workflow guardrails, not cryptographic authorization or a sandbox boundary. The MCP refuses every new job without an exact quote explicitly naming Claude, `claude-research`, or `delegate-to-claude`; implementation and execution require an additional phase approval quote. Codex is instructed not to infer or fabricate either. Once a Claude is explicitly delegated, Codex controls that worker's lifecycle; both agents still run in the deliberately permissive local environment described above.
 
 No Claude or Anthropic credentials are included in this repository. Each user authenticates their own local Claude Code installation.
 

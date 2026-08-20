@@ -1,11 +1,27 @@
 ---
 name: delegate-to-claude
-description: Implement and iterate on AI-safety research experiments through explicitly approved local Claude Code/Opus implementation, independent audits, separately approved execution, and evidence-based interpretation. Use only for work on research experiment code or runs, such as implementing or revising an agreed experiment, auditing its implementation or validity, executing it, controlling an active experiment job, or interpreting its results. Do not use for ordinary research discussion or planning, hypothetical implementation questions, plugin development or maintenance, or other non-experiment software work.
+description: Delegate AI-safety experiment implementation, audits, execution, or interpretation to local Claude Code/Opus only when the user explicitly asks to use Claude, names $delegate-to-claude, or names the claude-research plugin in the current conversation. Never infer Claude delegation from a request to implement, test, review, run, or interpret research. Do not use for ordinary research discussion or planning, hypothetical implementation questions, plugin development or maintenance, or other non-experiment software work.
 ---
 
 # Delegate to Claude
 
-Keep Codex responsible for research dialogue, synthesis, and epistemic judgment. Use the `claude_research` MCP tools to give implementation and independent audits to Claude Code sessions. Do not make experiment implementation edits directly while using this workflow; send corrections to the implementer session.
+Keep Codex responsible for research dialogue, synthesis, and epistemic judgment. After explicit user opt-in to Claude delegation, use the `claude_research` MCP tools to give the authorized work to Claude Code sessions. Do not make experiment implementation edits directly while using this workflow; send corrections to the implementer session.
+
+## Require explicit Claude opt-in
+
+This skill is opt-in, not an automatic workflow for experiment code. Activate it only when a current-conversation user instruction explicitly does at least one of the following:
+
+- asks Codex to use or delegate to Claude or Claude Code;
+- names `$delegate-to-claude` or `delegate-to-claude` as the requested workflow;
+- names the `claude-research` plugin as the requested workflow.
+
+A request to implement, code, test, review, audit, run, monitor, interpret, use agents, hand work off, or proceed with an experiment is not by itself permission to use Claude. Approval of an experiment contract, an implementation plan, code edits, tests, or an experiment run is also not Claude-delegation approval. Implementation or experiment approval alone is not delegation approval. Codex must handle such work directly through its normal workflow unless the user separately opts into Claude.
+
+Do not infer opt-in from the subject matter, the apparent value of independent review, a prior assistant proposal, assistant-authored text that says work will be handed off, or quoted/pasted material. The authorization must be the user's own instruction in the current conversation. If the user explicitly says not to use Claude or asks Codex to do the work itself, do not activate this skill and do not call `personas`, `start`, or `reply`.
+
+The exact opt-in instruction is the `delegation_approval_quote`. Copy it verbatim into every `start` call. It must explicitly name Claude, `claude-research`, or `delegate-to-claude`; never infer, paraphrase, or fabricate it. This is separate from `approval_quote`, which authorizes the implementation or execution phase. One user instruction may serve as both quotes only when its exact text explicitly authorizes both Claude delegation and that phase, for example: “Use $delegate-to-claude to implement the agreed experiment.”
+
+Explicit delegation approval is durable only for the work and phases it actually requests. It authorizes related worker lifecycle management after a job starts, but it does not broaden the scientific scope or authorize experiment execution. `list` and `cancel` may be used without opt-in only to honor a request to find or stop an already-running Claude worker.
 
 Codex is explicitly empowered to inspect the working tree, diffs, generated artifacts, logs, job records, and focused test outcomes at any point where a spot-check would reduce uncertainty or avoid wasted work. Use targeted inspections at handoffs, after surprising output, before expensive review, and when inheriting a partially implemented checkout. Do not mechanically reread every file after every Claude turn or duplicate a full independent audit. In a mid-progress project, inspect enough of the current state to identify the concrete remaining delta before delegating or resuming work.
 
@@ -13,9 +29,9 @@ Codex is explicitly empowered to inspect the working tree, diffs, generated arti
 
 Apply this workflow only to implementing, revising, auditing, running, controlling, or interpreting a research experiment. Handle development, maintenance, testing, validation, release, and reinstallation of this plugin directly in Codex. Handle other non-experiment software work through the normal Codex workflow.
 
-## Keep discussion implicit
+## Keep discussion in Codex
 
-Treat ordinary research discussion and planning as normal Codex dialogue, not activation of this skill. Answer the research substance directly. If the skill was explicitly invoked before implementation approval, do not repeatedly restate the phase, the lack of authorization, or the absence of a Claude job. Ask once for implementation approval when the experiment contract and plan are ready.
+Treat ordinary research discussion, planning, implementation, testing, review, and interpretation as normal Codex work unless the explicit Claude opt-in above is present. Answer the research substance or perform the requested work directly. If the skill was explicitly invoked before implementation approval, do not repeatedly restate the phase, the lack of authorization, or the absence of a Claude job. Ask once for implementation approval when the experiment contract and plan are ready.
 
 Once the user has approved implementation, treat that approval as durable for the agreed scope. A later explicit request to add or change an implementation feature is itself approval for that change; do not ask for a redundant confirmation. Do not repeatedly re-check, narrate, or ask about the implementation boundary. Revisit authorization only when the requested action materially expands the experiment without an explicit command, launches a consequential run, is destructive, or otherwise crosses a distinct approval boundary.
 
@@ -25,7 +41,9 @@ Read [experiment-trust.md](references/experiment-trust.md) before implementing o
 
 ## Follow the approval state machine
 
-Start in **discussion**. In this phase, reason with the user and inspect the repository read-only. Do not edit files, call `start` or `reply`, delegate implementation, or launch an experiment. Questions, hypotheticals, requests for a plan, and phrases such as “how would we” are not approval.
+The workflow has an outer gate: **explicit Claude opt-in**. Without it, do not enter this state machine or call `personas`, `start`, or `reply`; use normal Codex behavior instead.
+
+After opt-in, start in **discussion**. In this phase, reason with the user and inspect the repository read-only. Do not edit files, call `start` or `reply`, delegate implementation, or launch an experiment. Questions, hypotheticals, requests for a plan, and phrases such as “how would we” are not implementation approval.
 
 Move through these phases in order:
 
@@ -35,7 +53,7 @@ Move through these phases in order:
 4. **Execution:** enter only after reporting the gate results and receiving separate explicit approval for the full run.
 5. **Interpretation:** inspect completed-run evidence with a fresh interpreter.
 
-When approval is required, copy the user's exact authorization from the current conversation into `approval_quote`. Never infer, paraphrase, or fabricate approval. A complete first message that explicitly commands implementation can provide implementation approval if it also fixes the necessary contract; otherwise finish the contract and ask.
+When phase approval is required, copy the user's exact authorization from the current conversation into `approval_quote`. Never infer, paraphrase, or fabricate approval. This phase quote never substitutes for `delegation_approval_quote`. A complete first message that explicitly commands both Claude delegation and implementation can provide both approvals if it also fixes the necessary contract; otherwise finish the contract and ask.
 
 ## Establish the experiment contract
 
@@ -52,7 +70,7 @@ Mark unresolved choices explicitly. Never let the implementer silently choose a 
 
 Turn the accepted plan into a requirement ledger before delegation. The ledger must enumerate every user-requested capability, the expected code path or artifact, and an observable acceptance check. Include a dependency strategy that says which maintained libraries provide standard machinery and which experiment-specific glue must be custom. Prefer existing, well-supported libraries for standard training, modeling, checkpointing, and tracking components; write custom code only where the research design actually differs. An approved plan that explicitly names a library or library family counts as approval to use it.
 
-Ask the user to approve the contract and implementation plan. Until the response contains explicit authorization, remain in discussion and do not call the Claude MCP.
+Ask the user to approve the contract and implementation plan. If Claude opt-in is already present, ask only for the missing implementation approval; do not steer or pressure the user to delegate. Until both required authorizations are present, remain in discussion and do not call the Claude MCP.
 
 ## Optimize for research-grade correctness
 
@@ -81,11 +99,11 @@ At every milestone, distinguish “needed for a valid experiment” from “nice
 
 ## Delegate implementation
 
-Before the first job in a workflow, call `personas` once and inspect its runtime metadata. If the reported plugin build does not match the installed skill or manifest version, stop and report the stale installation instead of operating with mismatched tool semantics.
+After explicit Claude opt-in and before the first job in a workflow, call `personas` once and inspect its runtime metadata. If the reported plugin build does not match the installed skill or manifest version, stop and report the stale installation instead of operating with mismatched tool semantics.
 
 Choose a stable, concise `work_package_id` for the agreed implementation and use it for all related implementation, review, execution, and interpretation jobs. Resolve `cwd` to the most specific directory containing the research project. For a nested project, never use the monorepo root merely because it is the Git root.
 
-After explicit implementation approval, call `start` with phase `implementation`, persona `implementer`, the exact `approval_quote`, model `opus`, the precise project `cwd`, the stable `work_package_id`, and a self-contained brief. Include the experiment contract, requirement ledger, relevant paths, constraints, exact acceptance criteria, library-reuse decisions, and verification commands. State that the full experiment is not authorized. Respect any ownership split the user requested, such as reserving research prose or contract documents for Codex.
+After explicit Claude opt-in and explicit implementation approval, call `start` with phase `implementation`, persona `implementer`, the exact `delegation_approval_quote`, the exact phase `approval_quote`, model `opus`, the precise project `cwd`, the stable `work_package_id`, and a self-contained brief. Include the experiment contract, requirement ledger, relevant paths, constraints, exact acceptance criteria, library-reuse decisions, and verification commands. State that the full experiment is not authorized. Respect any ownership split the user requested, such as reserving research prose or contract documents for Codex.
 
 Call `poll` with the returned job ID and cursor until it completes. Inspect the actual working tree, generated artifacts, and test output; do not rely only on the implementer's summary.
 
@@ -108,7 +126,7 @@ Do not call a scaffold, interface layer, or plumbing-only smoke result a complet
 
 Use fresh sessions so reviewers are not anchored by the implementer's reasoning. Give them the original contract and paths to the actual code and artifacts, not the implementer's self-assessment.
 
-Call `start` with phase `review`, the same `work_package_id`, and the precise project `cwd` for each selected reviewer. Review jobs do not require `approval_quote`, cannot edit tracked implementation files, and cannot launch the full experiment.
+Call `start` with phase `review`, the same `work_package_id`, the precise project `cwd`, and the exact `delegation_approval_quote` for each selected reviewer. Review jobs do not require a phase `approval_quote`, cannot edit tracked implementation files, and cannot launch the full experiment. Do not add Claude reviewers when the user's delegation instruction authorized only a narrower implementation handoff.
 
 Right-size review to the next decision. Do not fan out reviewers while the implementation-completeness check is failing. For an implementation handoff, one fresh code review is normally sufficient. Add design and measurement audits when preparing an exploratory run; use the full set only for an expensive, conclusion-bearing, or otherwise high-consequence run. An early reviewer is appropriate only for a narrowly identified design risk whose answer will change the implementation, not as a substitute for finishing it.
 
@@ -125,13 +143,13 @@ Start independent audits concurrently when their scopes do not overlap. Synthesi
 
 Report the resolved and unresolved gate findings before execution. Ask for separate explicit approval to launch the full, expensive, or conclusion-bearing run. Implementation approval does not count as execution approval.
 
-After execution approval, start a new job with phase `execution`, persona `implementer`, the same `work_package_id`, the precise project `cwd`, and the new exact `approval_quote`. Give it the frozen contract, command, resolved configuration, artifact paths, and monitoring requirements. Do not use `reply` to turn an implementation job into execution. Do not let the execution job edit tracked experiment code; if a change is needed, return to implementation and repeat affected gates.
+After explicit Claude opt-in covering execution and separate execution approval, start a new job with phase `execution`, persona `implementer`, the same `work_package_id`, the precise project `cwd`, the exact `delegation_approval_quote`, and the new exact phase `approval_quote`. Give it the frozen contract, command, resolved configuration, artifact paths, and monitoring requirements. Do not use `reply` to turn an implementation job into execution. Do not let the execution job edit tracked experiment code; if a change is needed, return to implementation and repeat affected gates.
 
 A retry or materially repeated full run requires a new execution approval and a fresh `start` job.
 
 ## Interpret results
 
-After the run, call `start` with phase `interpretation`, the same `work_package_id`, the precise project `cwd`, and a fresh `results-interpreter`, passing the experiment contract plus paths to raw outputs, resolved configuration, logs, and summaries. Require it to inspect evidence rather than accept a narrated result.
+After the run, and only when the user's Claude opt-in covers interpretation, call `start` with phase `interpretation`, the same `work_package_id`, the precise project `cwd`, the exact `delegation_approval_quote`, and a fresh `results-interpreter`, passing the experiment contract plus paths to raw outputs, resolved configuration, logs, and summaries. Require it to inspect evidence rather than accept a narrated result.
 
 Classify the outcome as:
 
@@ -144,6 +162,7 @@ Report what the experiment rules out, what it does not rule out, anomalies, revi
 ## Tool discipline
 
 - Use one job ID per independent agent and preserve cursors between `poll` calls.
+- Never call `personas`, `start`, or `reply` without the explicit current-conversation Claude opt-in defined above. An ordinary implementation or run approval is insufficient.
 - Treat the persisted job record reported as `state_file` as recovery evidence, not as a substitute for inspecting the actual project artifacts.
 - Optimize for completed acceptance criteria, not agent turns, reports, or review count. Keep the number of jobs proportional to the decision being made.
 - Treat a job's phase as immutable. Use `reply` only within implementation, review, or interpretation. Start a fresh job for independent review or any execution.

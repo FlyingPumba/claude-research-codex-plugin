@@ -48,7 +48,10 @@ const pluginManifest = JSON.parse(
   readFileSync(join(ROOT, ".codex-plugin", "plugin.json"), "utf8"),
 );
 
-const SERVER_INSTRUCTIONS = `Local Claude Code executor for trustworthy research. Discussion and experiment-contract agreement happen in Codex before any Claude job starts. Every job has an immutable workflow phase, an explicit project cwd, and a durable work_package_id. Implementation and execution require an exact user approval quote, and they are separate approvals. Once a job is delegated, Codex has full operational authority over that Claude: it may cancel, redirect, restart, or continue workers without separate user approval. Worker control does not authorize a new experiment phase or repeat execution. Every persona receives the shared standing research decisions in addition to its role prompt. Poll each started job until terminal and inspect budget or policy warnings. Use reply to resume the same persisted Claude session for corrections and milestones; do not start a replacement implementer unless the prior native session is unrecoverable. An execution retry requires a new start and approval. Use fresh jobs for independent review. Opus runs locally with dangerous permissions. Codex should make targeted spot-checks of actual code and artifacts whenever they reduce uncertainty or wasted work.`;
+const SERVER_INSTRUCTIONS = `Local Claude Code executor for trustworthy research. Never infer permission to use Claude from a request to implement, test, review, run, or interpret research. Every new Claude job requires a separate exact user quote that explicitly opts into Claude, claude-research, or delegate-to-claude. Discussion and experiment-contract agreement happen in Codex before any Claude job starts. Every job has an immutable workflow phase, an explicit project cwd, and a durable work_package_id. Implementation and execution additionally require exact phase-approval quotes, and they are separate approvals. Once a job is explicitly delegated, Codex has full operational authority over that Claude: it may cancel, redirect, restart, or continue workers without separate user approval. Worker control does not authorize a new experiment phase or repeat execution. Every persona receives the shared standing research decisions in addition to its role prompt. Poll each started job until terminal and inspect budget or policy warnings. Use reply to resume the same persisted Claude session for corrections and milestones; do not start a replacement implementer unless the prior native session is unrecoverable. An execution retry requires a new start and approval. Use fresh jobs for independent review. Opus runs locally with dangerous permissions. Codex should make targeted spot-checks of actual code and artifacts whenever they reduce uncertainty or wasted work.`;
+
+const EXPLICIT_DELEGATION_PATTERN = /(?:\b(?:use|using|ask|have|let|start|approve|delegate)\b.{0,100}\bclaude\b|\bclaude\b.{0,100}\b(?:implement|review|audit|run|execute|interpret|work|delegate|approve)\b|claude-research|delegate-to-claude)/i;
+const DELEGATION_REFUSAL_PATTERN = /(?:\b(?:do\s+not|don't|dont|never|no|without|avoid|stop|cancel)\b.{0,100}\bclaudes?\b|\bclaudes?\b.{0,100}\b(?:stop|cancel|not\s+authorized|not\s+approved)\b)/i;
 
 function text(value) {
   if (value === undefined || value === null) return "";
@@ -109,6 +112,7 @@ function serializableJob(job) {
     persona: job.persona,
     phase: job.phase,
     approvalQuote: job.approvalQuote,
+    delegationApprovalQuote: job.delegationApprovalQuote,
     model: job.model,
     effort: job.effort,
     maxWallTimeMinutes: job.maxWallTimeMinutes,
@@ -331,16 +335,17 @@ function consumeClaudeMessage(job, message) {
 }
 
 function phaseInstructions(job) {
+  const delegation = `CLAUDE DELEGATION APPROVAL: ${job.delegationApprovalQuote}`;
   if (job.phase === "implementation") {
-    return `WORKFLOW PHASE: implementation\nUSER APPROVAL: ${job.approvalQuote}\nAUTHORIZED: implement the agreed contract and run focused tests or cheap smoke checks.\nFORBIDDEN: launch the full, expensive, or conclusion-bearing experiment. If such a run is needed, stop and report it to Codex.`;
+    return `${delegation}\nWORKFLOW PHASE: implementation\nIMPLEMENTATION APPROVAL: ${job.approvalQuote}\nAUTHORIZED: implement the agreed contract and run focused tests or cheap smoke checks.\nFORBIDDEN: launch the full, expensive, or conclusion-bearing experiment. If such a run is needed, stop and report it to Codex.`;
   }
   if (job.phase === "review") {
-    return "WORKFLOW PHASE: review\nAUTHORIZED: inspect the implementation and artifacts and run focused checks.\nFORBIDDEN: edit tracked implementation files or launch the full experiment.";
+    return `${delegation}\nWORKFLOW PHASE: review\nAUTHORIZED: inspect the implementation and artifacts and run focused checks.\nFORBIDDEN: edit tracked implementation files or launch the full experiment.`;
   }
   if (job.phase === "execution") {
-    return `WORKFLOW PHASE: execution\nUSER APPROVAL: ${job.approvalQuote}\nAUTHORIZED: execute only the frozen, audited experiment contract and monitor it as specified.\nFORBIDDEN: change tracked experiment code or silently alter the contract. If a change is required, stop and report it to Codex.`;
+    return `${delegation}\nWORKFLOW PHASE: execution\nEXECUTION APPROVAL: ${job.approvalQuote}\nAUTHORIZED: execute only the frozen, audited experiment contract and monitor it as specified.\nFORBIDDEN: change tracked experiment code or silently alter the contract. If a change is required, stop and report it to Codex.`;
   }
-  return "WORKFLOW PHASE: interpretation\nAUTHORIZED: inspect and analyze completed-run evidence and perform non-destructive recomputation.\nFORBIDDEN: edit tracked implementation files or launch a new experiment.";
+  return `${delegation}\nWORKFLOW PHASE: interpretation\nAUTHORIZED: inspect and analyze completed-run evidence and perform non-destructive recomputation.\nFORBIDDEN: edit tracked implementation files or launch a new experiment.`;
 }
 
 function buildPrompt(job, brief, continuation = false) {
@@ -455,6 +460,7 @@ function publicJob(job) {
     persona: job.persona,
     phase: job.phase,
     approval_quote: job.approvalQuote,
+    delegation_approval_quote: job.delegationApprovalQuote,
     model: job.model,
     effort: job.effort,
     cwd: job.cwd,
@@ -516,6 +522,20 @@ function startJob(args) {
     throw new Error(`Persona '${persona}' is not allowed in phase '${phase}'. Allowed: ${PERSONAS_BY_PHASE[phase].join(", ")}`);
   }
   if (!args.brief?.trim()) throw new Error("brief must be a non-empty string");
+  const delegationApprovalQuote = args.delegation_approval_quote?.trim() || null;
+  if (!delegationApprovalQuote) {
+    throw new Error(
+      "delegation_approval_quote is required for every new Claude job and must copy the user's explicit opt-in to Claude delegation",
+    );
+  }
+  if (
+    DELEGATION_REFUSAL_PATTERN.test(delegationApprovalQuote) ||
+    !EXPLICIT_DELEGATION_PATTERN.test(delegationApprovalQuote)
+  ) {
+    throw new Error(
+      "delegation_approval_quote must be an affirmative user request to use Claude, claude-research, or delegate-to-claude; refusals and implementation or experiment approval alone are not delegation approval",
+    );
+  }
   const approvalQuote = args.approval_quote?.trim() || null;
   if (APPROVAL_PHASES.has(phase) && !approvalQuote) {
     throw new Error(`approval_quote is required for phase '${phase}' and must copy the user's explicit authorization`);
@@ -571,6 +591,7 @@ function startJob(args) {
     persona,
     phase,
     approvalQuote,
+    delegationApprovalQuote,
     model: args.model || DEFAULT_MODEL,
     effort: args.effort || DEFAULT_EFFORT,
     maxWallTimeMinutes,
@@ -645,6 +666,11 @@ function replyToJob(args) {
   if (job.phase === "execution") {
     throw new Error("Execution jobs cannot be continued with reply; start a new execution job with a new approval_quote");
   }
+  if (!job.delegationApprovalQuote) {
+    throw new Error(
+      "This job predates the explicit Claude-delegation approval gate and cannot be resumed; obtain explicit user opt-in and start a new job",
+    );
+  }
   if (!args.message?.trim()) throw new Error("message must be a non-empty string");
   launch(job, args.message, true);
   return { ...publicJob(job), next_cursor: job.nextSeq };
@@ -708,7 +734,7 @@ loadPersistedJobs();
 const TOOL_DEFS = [
   {
     name: "start",
-    description: "Start a phase-scoped local Claude Code job and return immediately. cwd and work_package_id are required. Reuse an existing implementation job with reply; start rejects accidental replacement implementers. Implementation and execution are separate phases and each requires an exact user approval quote. Use fresh review jobs for independence. The brief must include the research contract, constraints, acceptance criteria, and requested evidence.",
+    description: "Start a phase-scoped local Claude Code job and return immediately. Never call this because the user merely asked Codex to implement, test, review, run, or interpret research. Every start requires delegation_approval_quote: an exact affirmative current-conversation request to use Claude, claude-research, or delegate-to-claude. Refusal or stop language is rejected. Implementation and execution additionally require their own phase approval_quote. cwd and work_package_id are required. Reuse an existing implementation job with reply; start rejects accidental replacement implementers. Use fresh review jobs for independence. The brief must include the research contract, constraints, acceptance criteria, and requested evidence.",
     inputSchema: {
       type: "object",
       properties: {
@@ -727,7 +753,11 @@ const TOOL_DEFS = [
         },
         approval_quote: {
           type: "string",
-          description: "Exact user authorization from the current conversation. Required for implementation and execution; never infer or fabricate it.",
+          description: "Exact phase authorization from the current conversation. Required for implementation and execution; this does not substitute for delegation_approval_quote.",
+        },
+        delegation_approval_quote: {
+          type: "string",
+          description: "Exact affirmative user request from the current conversation opting into local Claude delegation. It must request Claude, claude-research, or delegate-to-claude and must not contain refusal or stop language. Required for every phase; never infer, paraphrase, or fabricate it.",
         },
         model: { type: "string", default: DEFAULT_MODEL, description: "Claude model alias or full model name." },
         effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], default: DEFAULT_EFFORT },
@@ -754,7 +784,7 @@ const TOOL_DEFS = [
           description: "Required concise reason when replace_job_id is used.",
         },
       },
-      required: ["brief", "phase", "cwd", "work_package_id"],
+      required: ["brief", "phase", "cwd", "work_package_id", "delegation_approval_quote"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
